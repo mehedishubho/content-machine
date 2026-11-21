@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Devsroom-Work/content-machine/docs/superpowers/plans/2026-08-25-dashboard-content-parity.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Dashboard Content Parity: historical implementation plan",
+  "summary": "Historical implementation plan for dashboard video/post parity with Script Studio; explicitly marked as an unmaintained snapshot, context only.",
+  "scope": ["dashboard", "videos", "posts", "Script Studio parity", "captions", "deck_manifest", "presentation player", "Reveal.js"],
+  "cross_refs": ["../../architecture/overview.md", "../../architecture/posts-videos-api.md", "../../guides/api.md", "../../guides/postsyncer.md"],
+  "locked": false,
+  "precedence": null,
+  "notes": "Header banner declares this a historical snapshot whose unchecked tasks do not describe current state; dominant signals are task lists and constraints, not requirements or decisions. Classified DOC (context only) so its stale tasks are not treated as live requirements."
+}

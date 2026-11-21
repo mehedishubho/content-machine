@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Devsroom-Work/content-machine/docs/adr/0001-webhook-not-polling.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "0001: Receive Telegram updates via webhook, not polling",
+  "summary": "Decided to receive Telegram updates via an authenticated webhook on the always-on Railway deployment instead of long-polling getUpdates.",
+  "scope": ["Telegram webhook", "getUpdates polling", "webhook authentication", "X-Telegram-Bot-Api-Secret-Token", "secret URL path segment"],
+  "cross_refs": [],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

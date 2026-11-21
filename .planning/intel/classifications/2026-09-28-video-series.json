@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Devsroom-Work/content-machine/docs/superpowers/plans/2026-09-28-video-series.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Video Series Implementation Plan",
+  "summary": "Task-by-task implementation plan for workspace-scoped video series persistence, guarded ordering API, and Inertia series navigation for five VPN videos.",
+  "scope": ["video series", "workspace scoping", "SaveVideoSeriesAction", "VideoSeries model", "series API", "Inertia pages", "VPN videos V-85 to V-89"],
+  "cross_refs": ["docs/superpowers/specs/2026-09-28-video-series-design.md"],
+  "locked": false,
+  "precedence": null,
+  "notes": "Implementation/execution plan (task checkboxes, file lists, constraints) — no taxonomy match for plans. Classified SPEC over DOC because it defines technical constraints and build contracts (atomic ordering, guarded API, workspace isolation); its design spec referenced but not read."
+}

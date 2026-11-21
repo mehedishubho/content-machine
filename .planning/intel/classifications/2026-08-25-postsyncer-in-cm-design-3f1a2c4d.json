@@ -1,0 +1,13 @@
+{
+  "source_path": "D:/Devsroom-Work/content-machine/docs/superpowers/specs/2026-08-25-postsyncer-in-cm-design.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "PostSyncer in Content Machine",
+  "summary": "Design spec for integrating PostSyncer publishing/scheduling into Content Machine: config, data model, queue jobs, UI, and cutover.",
+  "scope": ["PostSyncer", "publish/schedule flow", "workspace settings", "Drive media link upload", "PublishPostJob/PublishVideoJob", "status tabs", "postsyncer.groups data model"],
+  "cross_refs": ["docs/architecture/posts-videos-api.md", "docs/postsyncer-setup.md", "web/publish_postsyncer.py", "../../architecture/overview.md", "../../guides/api.md", "../../guides/postsyncer.md", "docs/superpowers/plans/"],
+  "locked": false,
+  "precedence": null,
+  "notes": "specs/ path plus strong SPEC signals (data models, JSON shapes, queue/architecture contracts, endpoint tables). Contains a 'Decisions (locked)' table, but the doc self-identifies as an approved design spec, not an ADR; no ADR status field, so locked=false. Doc header marks it a historical snapshot superseded in places by later implementation."
+}

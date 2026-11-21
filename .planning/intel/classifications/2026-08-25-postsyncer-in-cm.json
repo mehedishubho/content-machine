@@ -1,0 +1,20 @@
+{
+  "source_path": "D:/Devsroom-Work/content-machine/docs/superpowers/plans/2026-08-25-postsyncer-in-cm.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "PostSyncer in Content Machine: historical implementation plan",
+  "summary": "Historical task-by-task implementation plan for workspace PostSyncer configuration, queued post/video publishing, and Studio-like status tabs.",
+  "scope": ["PostSyncer integration", "workspace settings", "queued publish jobs", "PostPublishPlanner", "VideoPublishPlanner", "MediaUrlResolver", "status tabs", "ideation", "Drive URL media", "personal-content cutover"],
+  "cross_refs": [
+    "docs/superpowers/specs/2026-08-25-postsyncer-in-cm-design.md",
+    "../../architecture/overview.md",
+    "../../architecture/posts-videos-api.md",
+    "../../guides/api.md",
+    "../../guides/postsyncer.md",
+    "https://docs.postsyncer.com"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Explicitly marked as historical snapshot whose checkboxes were not maintained; do not treat as current backlog. Dated implementation-plan format is not a standard SPEC convention; classified SPEC (over DOC) because dominant content is technical implementation contracts: interfaces, endpoint shapes, file map, migrations. Header note makes it non-authoritative context for current state."
+}
