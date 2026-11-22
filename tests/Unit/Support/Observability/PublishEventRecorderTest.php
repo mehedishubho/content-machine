@@ -8,21 +8,15 @@ use App\Models\PublishEvent;
 use App\Models\Workspace;
 use App\Support\Observability\PublishEventRecorder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Log;
-use Mockery;
-use Mockery\MockInterface;
-use Psr\Log\LoggerInterface;
+use Tests\Concerns\FakesPublishChannel;
 use Tests\TestCase;
 
 class PublishEventRecorderTest extends TestCase
 {
+    use FakesPublishChannel;
     use RefreshDatabase;
 
     private PublishEventRecorder $recorder;
-
-    private MockInterface $publishChannel;
-
-    private MockInterface $logManager;
 
     protected function setUp(): void
     {
@@ -30,24 +24,6 @@ class PublishEventRecorderTest extends TestCase
 
         $this->recorder = new PublishEventRecorder;
         $this->fakePublishChannel();
-    }
-
-    /**
-     * Laravel ships no Log::fake() in this framework version, so the publish
-     * channel is intercepted with Mockery spies: Log::spy() takes over the
-     * `log` binding and channel('publish') is stubbed to a LoggerInterface
-     * spy that records every write for assertion. (Rule 3 deviation: the
-     * plan's Log::fake()/assertSentOnChannel API does not exist in
-     * laravel/framework 13.)
-     */
-    private function fakePublishChannel(): void
-    {
-        $this->publishChannel = Mockery::spy(LoggerInterface::class);
-        $this->logManager = Log::spy();
-        $this->logManager->shouldReceive('channel')
-            ->with('publish')
-            ->andReturn($this->publishChannel);
-        $this->instance('log', $this->logManager);
     }
 
     private function createPost(Workspace $workspace): Post
@@ -67,7 +43,7 @@ class PublishEventRecorderTest extends TestCase
 
         $this->recorder->record(PublishEventData::claim(
             workspaceId: $workspace->id,
-            publishableType: $post::class,
+            publishableType: Post::class,
             publishableId: $post->getKey(),
             jobId: 'job-uuid-1',
             operationId: 'operation-1',
@@ -87,34 +63,28 @@ class PublishEventRecorderTest extends TestCase
         $this->assertNull($row->duration_ms);
         $this->assertSame([], $row->payload);
         $this->assertNotNull($row->created_at);
-        $this->assertNull($row->updated_at);
+        // Append-only: the model declares no updated_at column at all.
+        $this->assertNull($row->getUpdatedAtColumn());
 
-        $this->logManager->shouldHaveReceived('channel')->with('publish')->once();
-        $this->publishChannel->shouldHaveReceived('info')->once()->withArgs(
-            function (string $message, array $context) use ($workspace, $post): bool {
-                $this->assertSame('publish_event', $message);
-                $this->assertSame('claim', $context['stage']);
-                $this->assertSame('job-uuid-1', $context['job_id']);
-                $this->assertSame('run-1', $context['run_token']);
-                $this->assertSame($workspace->id, $context['workspace_id']);
-                $this->assertSame($post->getKey(), $context['publishable_id']);
-                // D-02: the context must stay JSON-encodable for the
-                // JsonFormatter's one-object-per-line output.
-                $this->assertNotFalse(json_encode($context));
-
-                return true;
-            }
-        );
+        $records = $this->publishEventRecords();
+        $this->assertSame(1, count($records));
+        $this->assertSame('claim', $records[0]->context['stage']);
+        $this->assertSame('job-uuid-1', $records[0]->context['job_id']);
+        $this->assertSame('run-1', $records[0]->context['run_token']);
+        $this->assertSame($workspace->id, $records[0]->context['workspace_id']);
+        $this->assertSame($post->getKey(), $records[0]->context['publishable_id']);
+        // D-02: the log context stays JSON-encodable for the JsonFormatter's
+        // one-object-per-line output.
+        $this->assertNotFalse(json_encode($records[0]->context));
     }
 
     public function test_record_with_the_same_payload_twice_appends_two_rows(): void
     {
         $workspace = Workspace::factory()->create();
         $post = $this->createPost($workspace);
-
         $event = PublishEventData::checkpoint(
             workspaceId: $workspace->id,
-            publishableType: $post::class,
+            publishableType: Post::class,
             publishableId: $post->getKey(),
             groupKey: 'group-1',
         );
@@ -132,7 +102,7 @@ class PublishEventRecorderTest extends TestCase
 
         $this->recorder->record(PublishEventData::claim(
             workspaceId: $workspace->id,
-            publishableType: $post::class,
+            publishableType: Post::class,
             publishableId: $post->getKey(),
         ));
 
@@ -142,6 +112,7 @@ class PublishEventRecorderTest extends TestCase
         $this->assertNull($row->run_token);
         $this->assertSame($workspace->id, $row->workspace_id);
 
-        $this->publishChannel->shouldHaveReceived('info')->once();
+        $records = $this->publishEventRecords();
+        $this->assertSame(1, count($records));
     }
 }

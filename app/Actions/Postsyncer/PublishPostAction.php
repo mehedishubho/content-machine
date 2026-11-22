@@ -63,6 +63,7 @@ class PublishPostAction
         ?string $operationId = null,
         ?string $leaseId = null,
         ?string $jobId = null,
+        ?int $attempt = null,
     ): void {
         $post->refresh();
         $originalStatus = $post->status;
@@ -83,9 +84,14 @@ class PublishPostAction
         }
 
         $claimLeaseId = null;
+        $claimedAt = null;
+        // Failure paths can fire before prepareProgress runs, so the
+        // correlation id is seeded from the pre-claim progress (resume runs
+        // already carry an operation id) and re-derived mid-run below.
+        $eventOperationId = $this->eventOperationId($post->publish_progress, $operationId);
 
         try {
-            $claimed = $this->claimPost($post, $options, $runToken, $operationId, $leaseId);
+            $claimed = $this->claimPost($post, $options, $runToken, $operationId, $leaseId, $jobId);
 
             if ($claimed === null) {
                 return;
@@ -94,6 +100,18 @@ class PublishPostAction
             $post = $claimed;
             $progress = $post->publish_progress;
             $claimLeaseId = $post->publish_lease_id;
+            $claimedAt = $post->publish_claimed_at;
+
+            // D-07: claimPost()'s transaction has returned — the claim event
+            // is recorded outside it. Observation only: behavior unchanged.
+            $this->recorder->record(PublishEventData::claim(
+                workspaceId: $post->workspace_id,
+                publishableType: $post::class,
+                publishableId: (int) $post->getKey(),
+                jobId: $jobId,
+                operationId: $operationId,
+                runToken: $runToken,
+            ));
             $post->loadMissing('workspace');
             $this->assertFirstPublish($post, $options);
             $config = PostsyncerConfig::fromWorkspace($post->workspace);
@@ -126,6 +144,9 @@ class PublishPostAction
             if ($progress === null) {
                 return;
             }
+            // Correlation for the remaining events: prepareProgress just
+            // wrote the authoritative operation id into the progress.
+            $eventOperationId = $this->eventOperationId($progress, $operationId);
             $this->assertAccountsConfigured($config, $groups);
             $completedGroups = $this->completedGroups($progress);
 
@@ -165,6 +186,17 @@ class PublishPostAction
                         if (! $this->saveProgressForRun($post, $progress, $runToken, $claimLeaseId)) {
                             return;
                         }
+                        // D-07: recorded after the checkpoint transaction
+                        // committed — never inside it (D-04 checkpoint).
+                        $this->recordCheckpointEvent(
+                            $post,
+                            $groupKey,
+                            count($completedGroups),
+                            $progress,
+                            $jobId,
+                            $eventOperationId,
+                            $runToken,
+                        );
 
                         if ($group->mediaUrls !== []) {
                             $mediaIds = $client->uploadFromUrls(
@@ -189,6 +221,15 @@ class PublishPostAction
                             if (! $this->saveProgressForRun($post, $progress, $runToken, $claimLeaseId)) {
                                 return;
                             }
+                            $this->recordCheckpointEvent(
+                                $post,
+                                $groupKey,
+                                count($completedGroups),
+                                $progress,
+                                $jobId,
+                                $eventOperationId,
+                                $runToken,
+                            );
                         }
                     }
 
@@ -213,6 +254,15 @@ class PublishPostAction
                     if (! $this->saveProgressForRun($post, $progress, $runToken, $claimLeaseId)) {
                         return;
                     }
+                    $this->recordCheckpointEvent(
+                        $post,
+                        $groupKey,
+                        count($completedGroups),
+                        $progress,
+                        $jobId,
+                        $eventOperationId,
+                        $runToken,
+                    );
 
                     $result = $client->createPost($body, $idempotencyKey.':post');
                     $post->refresh();
@@ -252,6 +302,15 @@ class PublishPostAction
                     if (! $this->saveProgressForRun($post, $progress, $runToken, $claimLeaseId)) {
                         return;
                     }
+                    $this->recordCheckpointEvent(
+                        $post,
+                        $groupKey,
+                        count($completedGroups),
+                        $progress,
+                        $jobId,
+                        $eventOperationId,
+                        $runToken,
+                    );
                 }
             }
 
@@ -291,8 +350,9 @@ class PublishPostAction
                     publishableId: (int) $post->getKey(),
                     outcome: 'succeeded',
                     jobId: $jobId,
-                    operationId: $operationId,
+                    operationId: $eventOperationId,
                     runToken: $runToken,
+                    durationMs: $this->runDurationMs($claimedAt),
                 ));
             } else {
                 throw new PostsyncerException(
@@ -320,6 +380,8 @@ class PublishPostAction
             if (! $unknownOutcome
                 && ! ($e instanceof PostsyncerException && ! $e->retryable)
                 && ! ($e instanceof InvalidArgumentException)) {
+                $this->recordRetryEvent($post, $e, $jobId, $eventOperationId, $runToken, $attempt);
+
                 throw $e;
             }
 
@@ -333,9 +395,117 @@ class PublishPostAction
                 && (($e instanceof PostsyncerException && $e->retryable)
                     || $e instanceof ConnectionException)
                 && ! ($e instanceof PostsyncerException && $e->safeToRetry)) {
+                $this->recordRetryEvent($post, $e, $jobId, $eventOperationId, $runToken, $attempt);
+
                 throw $e;
             }
+
+            // Terminal for this run: the failure (failed or uncertain) stays
+            // in the record. D-07: recorded AFTER recordFailureForRun()'s
+            // transaction returned — never inside it.
+            $this->recorder->record(PublishEventData::finalize(
+                workspaceId: $post->workspace_id,
+                publishableType: $post::class,
+                publishableId: (int) $post->getKey(),
+                outcome: 'failed',
+                jobId: $jobId,
+                operationId: $eventOperationId,
+                runToken: $runToken,
+                durationMs: $this->runDurationMs($claimedAt),
+            ));
         }
+    }
+
+    /**
+     * Wall-clock duration from the durable claim to now, when the claim
+     * timestamp is in scope. Trivially reads existing values — no new timers.
+     */
+    private function runDurationMs(?CarbonImmutable $claimedAt): ?int
+    {
+        if ($claimedAt === null) {
+            return null;
+        }
+
+        return (int) abs($claimedAt->diffInMilliseconds(now()));
+    }
+
+    /**
+     * Correlation operation id for publish events: the persisted progress
+     * operation id (written by prepareProgress) is authoritative once it
+     * exists; the handle param covers the claim event and legacy deliveries
+     * whose progress never carried one.
+     *
+     * @param  array<string, mixed>|null  $progress
+     */
+    private function eventOperationId(?array $progress, ?string $fallback): ?string
+    {
+        $persisted = $progress['operation_id'] ?? null;
+        $persisted = is_string($persisted) && trim($persisted) !== ''
+            ? $persisted
+            : null;
+
+        return $persisted ?? $fallback;
+    }
+
+    /**
+     * Retry-stage event for an attempt being handed back to the queue
+     * worker's retry policy (D-04). Only the exception class short name is
+     * carried — no messages, no stack traces, no config (Pitfall 4).
+     */
+    private function recordRetryEvent(
+        Post $post,
+        Throwable $exception,
+        ?string $jobId,
+        ?string $operationId,
+        string $runToken,
+        ?int $attempt,
+    ): void {
+        $this->recorder->record(PublishEventData::retry(
+            workspaceId: $post->workspace_id,
+            publishableType: $post::class,
+            publishableId: (int) $post->getKey(),
+            reason: class_basename($exception),
+            attempt: $attempt,
+            jobId: $jobId,
+            operationId: $operationId,
+            runToken: $runToken,
+        ));
+    }
+
+    /**
+     * Checkpoint-stage event for one committed progress checkpoint (D-04).
+     * Must be called only AFTER the checkpoint's DB::transaction returned —
+     * never inside it (D-07). Payload carries the group key, completed
+     * count, and the persisted phase: ids, counts, and statuses only.
+     *
+     * @param  array<string, mixed>  $progress
+     */
+    private function recordCheckpointEvent(
+        Post $post,
+        string $groupKey,
+        int $completedCount,
+        array $progress,
+        ?string $jobId,
+        ?string $operationId,
+        string $runToken,
+    ): void {
+        $this->recorder->record(PublishEventData::checkpoint(
+            workspaceId: $post->workspace_id,
+            publishableType: $post::class,
+            publishableId: (int) $post->getKey(),
+            groupKey: $groupKey,
+            jobId: $jobId,
+            operationId: $operationId,
+            runToken: $runToken,
+            provider: 'postsyncer',
+            payload: [
+                'group' => $groupKey,
+                'completed' => $completedCount,
+                'phase' => is_array($progress['current'] ?? null)
+                    ? ($progress['current']['phase'] ?? null)
+                    : 'completed',
+            ],
+        ));
     }
 
     /**
@@ -2459,8 +2629,14 @@ class PublishPostAction
         string $runToken,
         ?string $operationId = null,
         ?string $leaseId = null,
+        ?string $jobId = null,
     ): ?Post {
-        return DB::transaction(function () use ($post, $options, $runToken, $operationId, $leaseId): ?Post {
+        // Set inside the transaction when the previous worker's expired lease
+        // is detected and the run is reset (OBS-05). The lease-expiry claim
+        // event is recorded AFTER the transaction below commits.
+        $leaseExpired = false;
+
+        $claimed = DB::transaction(function () use ($post, $options, $runToken, $operationId, $leaseId, &$leaseExpired): ?Post {
             Workspace::query()
                 ->whereKey($post->workspace_id)
                 ->lockForUpdate()
@@ -2539,6 +2715,7 @@ class PublishPostAction
                     && ($this->hasUnknownCurrent($progress) || ($progress['state'] ?? null) === 'uncertain');
 
                 if ($unknownOutcome) {
+                    $leaseExpired = true;
                     $progress['state'] = 'uncertain';
                     $error = 'PostSyncer create outcome is uncertain. Reconcile PostSyncer before retrying. '
                         .'The previous publish worker lease expired.';
@@ -2611,6 +2788,23 @@ class PublishPostAction
 
             return $locked;
         });
+
+        // OBS-05: the previous worker's lease expired and the run was reset.
+        // D-07: the claim transaction above has committed — the event is
+        // recorded outside it, and the branch's publish behavior is untouched.
+        if ($leaseExpired) {
+            $this->recorder->record(PublishEventData::claim(
+                workspaceId: $post->workspace_id,
+                publishableType: $post::class,
+                publishableId: (int) $post->getKey(),
+                jobId: $jobId,
+                operationId: $operationId,
+                runToken: $runToken,
+                payload: ['lease_expired' => true],
+            ));
+        }
+
+        return $claimed;
     }
 
     /**

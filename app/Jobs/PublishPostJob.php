@@ -213,9 +213,10 @@ class PublishPostJob implements ShouldBeUnique, ShouldQueue
         // constructed/handled outside a queue worker (direct tests, sync
         // dispatch fallbacks) — events stay queryable via operation/run ids.
         $jobId = $this->job?->uuid();
+        $attempt = $this->job?->attempts();
 
         if ($this->operationId === null && $this->leaseId === null) {
-            $action->handle($this->post, $this->options, $runToken, jobId: $jobId);
+            $action->handle($this->post, $this->options, $runToken, jobId: $jobId, attempt: $attempt);
 
             return;
         }
@@ -227,6 +228,7 @@ class PublishPostJob implements ShouldBeUnique, ShouldQueue
             $this->operationId,
             $this->leaseId,
             $jobId,
+            $attempt,
         );
     }
 
