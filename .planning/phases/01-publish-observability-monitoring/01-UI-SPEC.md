@@ -1,10 +1,11 @@
 ---
 phase: "1"
 slug: "publish-observability-monitoring"
-status: draft
+status: approved
 shadcn_initialized: true
 preset: none
 created: "2026-11-22"
+reviewed_at: "2026-11-22"
 ---
 
 # Phase 1 — UI Design Contract
@@ -245,18 +246,22 @@ breakdown" resolved here.
 > `## Copywriting Contract` above — this section covers state coverage and REFERENCES those
 > rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: 8 covered, 0 backstop, 0 unresolved
+Resolved via the ui-consideration probe (2026-11-22): 53 applicable considerations across 8
+surfaces — 53 resolved (verification: explicit), 0 backstop, 0 unresolved. E4 (success-rate
+figure + stacked bar) prose-classified to zero kinds and carries an authored
+`elements: ["list-collection"]` override (user-confirmed); its categories adopt the
+region-level truths below.
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | counts row + rate bar + outcomes list | ✅ covered | Zero attempts in the period renders the documented "No publish activity in this period." empty block and the success-rate figure as "—" |
-| zero-one-many | success-rate figure + counts | ✅ covered | 0 attempts → "—"; 1 attempt → "100%" (or "0%"); counts show real zeros; singular/plural copy not needed (labels are count-neutral) |
-| loading | period selector switch | ✅ covered | Inertia partial reload dims the metrics region to 60% opacity with layout preserved; no skeleton swap, no spinner flash |
-| error | aggregate load failure | ✅ covered | Failed load renders an inline alert (ui kit `alert`) with the documented error copy and a Retry control; the page shell and period selector still render |
-| partial | outcomes rows with missing optional fields | ✅ covered | Missing provider/group renders the meta sub-line with type only; missing title falls back to the human id |
-| overflow | outcomes list at volume | ✅ covered | List is capped at the latest 20 outcomes with the documented cap note; further history is out of scope for v1 (90-day retention is queryable via SQL, D-19) |
-| long-text | content titles + correlation ids | ✅ covered | Titles truncate at one line with CSS ellipsis; correlation ids (human id, job id, run token) render in mono with truncation and a `title` attribute carrying the full value |
-| populated | typical single-operator volume | ✅ covered | 4 count tiles + one stacked bar + a ≤20-row list read at a glance without pagination or scroll juggling |
+| Category | Elements | Verification | Truth |
+|----------|----------|--------------|-------|
+| empty | E1 page, E3 counts row, E4 rate figure, E5 outcomes list, E6 home card, E8 empty states | explicit | Zero attempts in the period renders the documented page empty block (Copywriting: "No publish activity in this period.") and the success-rate figure as "—" with visually hidden "No attempts" — never "0%", never "NaN%" |
+| zero-one-many | E1, E3, E4, E5, E6, E8 | explicit | 0 attempts → "—"; 1 attempt → "100%" (or "0%"); counts show real zeros; labels are count-neutral so no singular/plural copy is needed |
+| loading | E1–E8 (metrics region + period switch) | explicit | Period-selector switch dims the metrics region to 60% opacity with layout preserved via Inertia partial reload; no skeleton swap, no spinner flash |
+| error | E1–E8 (aggregate load failure) | explicit | Failed load renders the inline alert with documented error copy plus a Retry control (Copywriting: "Could not load publish metrics."); the page shell and period selector still render |
+| populated | E1, E3, E4, E5, E6, E8 | explicit | Typical single-operator volume reads at a glance: 4 count tiles + one stacked bar + a ≤20-row list, no pagination or scroll juggling |
+| partial | E1, E3, E4, E5, E6, E8 | explicit | Missing provider/group renders the meta sub-line with type only; missing title falls back to the human id |
+| overflow | E1–E8 (outcomes list at volume) | explicit | Outcomes list is capped at the latest 20 with the documented cap note (Copywriting: "Showing the latest 20 outcomes"); further history is out of scope for v1 (90-day retention queryable via SQL, D-19) |
+| long-text | E2, E3, E5, E7, E8 | explicit | Titles truncate at one line with CSS ellipsis; correlation ids (human id, job id, run token) render in mono with truncation and a `title` attribute carrying the full value |
 
 ---
 
@@ -271,12 +276,12 @@ Applicable state considerations resolved: 8 covered, 0 backstop, 0 unresolved
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-11-22
