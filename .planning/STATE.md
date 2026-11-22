@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Publish Observability & Monitoring
 status: executing
-stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-11-22T09:46:14.764Z"
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-11-22T11:06:16.844Z"
 last_activity: 2026-11-22
-last_activity_desc: "Feature-parity audit against OurDesh-style news-automation list; ROADMAP extended to 11 phases (added Track 2: Phases 6–11, 28 requirements)"
-state_head: 26e748ef409324405fbc20ac365b4698d12a362e
+last_activity_desc: Phase 01 execution started
+state_head: 1cdc4ed9b4d9e5aad3b60f4708f85a939d1d63f9
 progress:
   total_phases: 11
   completed_phases: 0
   total_plans: 5
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -36,14 +36,14 @@ progress:[░░░░░░░░░░] 0%
 See: .planning/PROJECT.md (updated 2026-11-22)
 
 **Core value:** Content items reach their connected platforms reliably — and the system can prove it via a measurable publish success rate (PostSyncer/SocialReins)
-**Current focus:** Phase 1 — Publish Observability & Monitoring
+**Current focus:** Phase 01 — Publish Observability & Monitoring
 
 ## Current Position
 
-Phase: 01 (Publish Observability & Monitoring) — READY TO EXECUTE
-Plan: 0 of TBD (phase not yet planned)
+Phase: 01 (Publish Observability & Monitoring) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-11-22 — Feature-parity audit against OurDesh-style news-automation list; ROADMAP extended to 11 phases (added Track 2: Phases 6–11, 28 requirements)
+Last activity: 2026-11-22 — Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -65,6 +65,11 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01 P01 | 61 min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -75,6 +80,9 @@ Recent decisions affecting current work:
 
 - Project init: ADR-0001 (Telegram webhook-not-polling) and ADR-0002 (operational secrets in `.secrets/`) are LOCKED — see PROJECT.md `<decisions>` block
 - Project init: postsyncer design spec's "Decisions (locked)" table is NON-locked (user-confirmed) — recorded as constraints only
+- [Phase 01]: Recorder seam with a concrete `new PublishEventRecorder` constructor default so direct `new PublishPostAction(...)` call sites keep working
+- [Phase 01]: Event operation ids resolve from persisted progress after prepareProgress, dispatch param as claim-event fallback
+- [Phase 01]: Retry attempt count sourced from the queue worker via a new optional ?int handle() param
 
 ### Pending Todos
 
@@ -96,6 +104,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-22T08:17:25.572Z
-Stopped at: Phase 1 UI-SPEC approved
-Resume file: .planning/phases/01-publish-observability-monitoring/01-UI-SPEC.md
+Last session: 2026-11-22T11:06:09.085Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
