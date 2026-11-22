@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Actions\Observability\SendPublishWatchdogAlertAction;
 use App\Models\Post;
+use App\Models\PublishEvent;
 use App\Models\Video;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
@@ -16,14 +18,25 @@ use Throwable;
  * publish state, requeues jobs, or performs recovery writes — recovery
  * belongs to the existing reconcile/recover commands.
  *
- * Condition 1 (stuck): a post or video sitting in queued/running past
- * stuck_margin_multiplier x its type's lease window. Posts derive staleness
- * from publish_claimed_at (a read-only variant of
- * DispatchPendingPostPublishesCommand's verified stale-lease query); videos
- * have no publish_claimed_at column (posts-only migration
- * 2026_09_01_140003), so staleness derives from publish_events recency —
- * no event within the margin means no observable progress (Pitfall 7) —
- * falling back to videos.updated_at when the video has no events at all.
+ * Three conditions alert (D-14):
+ *  - stuck: queued/running past stuck_margin_multiplier x the type's lease
+ *    window. Posts derive staleness from publish_claimed_at (a read-only
+ *    variant of DispatchPendingPostPublishesCommand's verified stale-lease
+ *    query); videos have no publish_claimed_at column (posts-only migration
+ *    2026_09_01_140003), so staleness derives from publish_events recency —
+ *    no event within the margin means no observable progress (Pitfall 7) —
+ *    falling back to videos.updated_at when the video has no events at all.
+ *  - exhausted: publish_state failed with a newest finalize event whose
+ *    payload.outcome is failed — the permanent-failure marker (the state
+ *    column alone can predate a later successful run; the newest finalize
+ *    event is the run-level truth).
+ *  - lease_loop: a post collecting at least lease_expiry_alert_threshold
+ *    claim events with payload.lease_expired=true within the lookback
+ *    window. Post-scoped by design: the lease-expiry event vocabulary
+ *    exists only on the post claim path (plan 01-01) — videos carry no
+ *    publish_claimed_at/publish_lease_id columns (posts-only migrations
+ *    2026_09_01_140003/140004) and PublishVideoAction contains no lease
+ *    machinery, so this query can only ever match posts.
  *
  * Dedup (D-15): at most one alert per content item per condition per day.
  * Cache::add on a date-suffixed key is the atomic guard; the Telegram
@@ -35,14 +48,26 @@ class PublishWatchdogCommand extends Command
 
     protected $description = 'Alert when publishes stick past their lease window, exhaust their retries, or loop on lease expiries';
 
-    public function handle(): int
+    public function handle(SendPublishWatchdogAlertAction $alertAction): int
     {
         $stuck = 0;
         $leaseLoops = 0;
         $exhausted = 0;
 
         try {
-            $stuck = $this->detectStuckPublishes();
+            $stuck = $this->detectStuckPublishes($alertAction);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+
+        try {
+            $exhausted = $this->detectExhaustedPublishes($alertAction);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+
+        try {
+            $leaseLoops = $this->detectLeaseLoopPosts($alertAction);
         } catch (Throwable $exception) {
             report($exception);
         }
@@ -113,7 +138,7 @@ class PublishWatchdogCommand extends Command
             ->get();
     }
 
-    private function detectStuckPublishes(): int
+    private function detectStuckPublishes(SendPublishWatchdogAlertAction $alertAction): int
     {
         $detected = 0;
 
@@ -123,7 +148,7 @@ class PublishWatchdogCommand extends Command
 
             if ($this->alertingEnabled()) {
                 try {
-                    $this->alertFor('stuck', $post);
+                    $this->alertFor($alertAction, 'stuck', $post);
                 } catch (Throwable $exception) {
                     report($exception);
                 }
@@ -136,7 +161,111 @@ class PublishWatchdogCommand extends Command
 
             if ($this->alertingEnabled()) {
                 try {
-                    $this->alertFor('stuck', $video);
+                    $this->alertFor($alertAction, 'stuck', $video);
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
+            }
+        }
+
+        return $detected;
+    }
+
+    /**
+     * Condition 2 (D-14): failed content whose newest finalize event
+     * recorded outcome=failed — the permanent-failure marker. Per-content
+     * newest-event resolution keeps the semantics exact (OBS-05); the
+     * failed set is small and the day-key dedup bounds repeated scans.
+     *
+     * @return Collection<int, Post|Video>
+     */
+    private function exhaustedPublishes(): Collection
+    {
+        return Post::query()
+            ->where('publish_state', 'failed')
+            ->orderBy('id')
+            ->get()
+            ->concat(Video::query()->where('publish_state', 'failed')->orderBy('id')->get())
+            ->filter(fn (Post|Video $content): bool => $this->newestFinalizeOutcome($content) === 'failed')
+            ->values();
+    }
+
+    /**
+     * The run-level truth for condition 2: the newest finalize event's
+     * outcome (null when the content has no finalize event — e.g. a failed
+     * dispatch that never ran).
+     */
+    private function newestFinalizeOutcome(Post|Video $content): ?string
+    {
+        $event = PublishEvent::query()
+            ->where('publishable_type', $content::class)
+            ->where('publishable_id', $content->getKey())
+            ->where('stage', 'finalize')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
+
+        $outcome = $event?->payload['outcome'] ?? null;
+
+        return is_string($outcome) ? $outcome : null;
+    }
+
+    private function detectExhaustedPublishes(SendPublishWatchdogAlertAction $alertAction): int
+    {
+        $detected = 0;
+
+        foreach ($this->exhaustedPublishes() as $content) {
+            $detected++;
+            $this->reportItem('exhausted', $content);
+
+            if ($this->alertingEnabled()) {
+                try {
+                    $this->alertFor($alertAction, 'exhausted', $content);
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
+            }
+        }
+
+        return $detected;
+    }
+
+    /**
+     * Condition 3 (D-14/OBS-05): posts with at least
+     * lease_expiry_alert_threshold claim events carrying
+     * payload.lease_expired=true within lease_expiry_lookback_hours.
+     *
+     * @return Collection<int, Post>
+     */
+    private function leaseLoopPosts(): Collection
+    {
+        $threshold = (int) config('observability.watchdog.lease_expiry_alert_threshold');
+        $since = now()->subHours((int) config('observability.watchdog.lease_expiry_lookback_hours'));
+
+        $postIds = PublishEvent::query()
+            ->where('publishable_type', Post::class)
+            ->where('stage', 'claim')
+            ->whereNotNull('publishable_id')
+            ->where('payload->lease_expired', 'true')
+            ->where('created_at', '>=', $since)
+            ->groupBy('publishable_id')
+            ->havingRaw('count(*) >= ?', [$threshold])
+            ->pluck('publishable_id');
+
+        return Post::query()->whereIn('id', $postIds)->orderBy('id')->get();
+    }
+
+    private function detectLeaseLoopPosts(SendPublishWatchdogAlertAction $alertAction): int
+    {
+        $detected = 0;
+
+        foreach ($this->leaseLoopPosts() as $post) {
+            $detected++;
+            $this->reportItem('lease_loop', $post);
+
+            if ($this->alertingEnabled()) {
+                try {
+                    $this->alertFor($alertAction, 'lease_loop', $post);
                 } catch (Throwable $exception) {
                     report($exception);
                 }
@@ -150,10 +279,14 @@ class PublishWatchdogCommand extends Command
      * D-15 dedup: Cache::add on the date-suffixed key is the atomic guard —
      * only the caller that wins the add proceeds to alert, so concurrent or
      * repeated watchdog executions queue at most one alert per content item
-     * per day while a condition holds.
+     * per day while a condition holds. The outbox logical_key encodes the
+     * same content+date as the second layer.
      */
-    private function alertFor(string $condition, Post|Video $publishable): void
-    {
+    private function alertFor(
+        SendPublishWatchdogAlertAction $alertAction,
+        string $condition,
+        Post|Video $publishable,
+    ): void {
         $key = sprintf(
             'watchdog:%s:%s:%s:%s',
             $condition,
@@ -167,14 +300,14 @@ class PublishWatchdogCommand extends Command
             return;
         }
 
-        // Alert dispatch (SendPublishWatchdogAlertAction, Telegram outbox)
-        // is wired in by the alert-delivery slice of this plan.
-        $this->line(sprintf(
-            'Watchdog: would alert [%s] on %s #%d.',
-            $condition,
-            $publishable instanceof Post ? 'post' : 'video',
-            $publishable->getKey(),
-        ));
+        $workspace = $publishable->workspace;
+        $owner = $workspace?->team?->owner;
+
+        if ($workspace === null || $owner === null) {
+            return;
+        }
+
+        $alertAction->handle($workspace, $owner, $condition, $publishable);
     }
 
     private function reportItem(string $condition, Post|Video $publishable): void
