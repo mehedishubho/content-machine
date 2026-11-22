@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Publish Observability & Monitoring
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-11-22T20:20:48.153Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-11-22T21:00:54.339Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 01 execution started
-state_head: 0e8011c3ecca99818bd9341cf9c88e44d4a1c2bf
+state_head: 4783aa7436c23c56dbc016efcd8b648c2932fe79
 progress:
   total_phases: 11
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -41,7 +41,7 @@ See: .planning/PROJECT.md (updated 2026-11-22)
 ## Current Position
 
 Phase: 01 (Publish Observability & Monitoring) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 01 execution started
 
@@ -71,6 +71,7 @@ Progress: [░░░░░░░░░░] 0%
 |------|----------|-------|-------|
 | Phase 01 P01 | 61 min | 3 tasks | 11 files |
 | Phase 01 P02 | 326 min | 3 tasks | 13 files |
+| Phase 01 P03 | 31 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Retry attempt count sourced from the queue worker via a new optional ?int handle() param
 - [Phase 01]: Provider HTTP events take an optional nullsafe recorder plus workspace id (a workspace-less event can never persist, workspace_id is NOT NULL FK); unmodified call sites stay silent
 - [Phase 01]: Run-level finalize(failed) sits at the handle() catch fall-through on both publish actions (post-path 01-01 parity); operator reconcile/recover transitions stay uninstrumented on both paths for watchdog-count truthfulness
+- [Phase 01]: Watchdog alert recipient is the workspace team owner; fixtures mirror CreateTeamAction's team_user attach because factories skip it and the notification action checks membership before the bot check — QueueTelegramNotificationAction order: membership, then config, then link
+- [Phase 01]: Exhausted-retry condition resolves the newest finalize event per failed content; a failed state column alone can predate a later successful run — Run-level truth for the permanent-failure marker (D-14 condition 2)
+- [Phase 01]: Retention prune deletes strictly created_at < cutoff in bounded 500-row ctid batches; exact-90d boundary row survives (strict <, frozen-clock proven) — D-03 with PostgreSQL bloat control and no raw destructive commands
 
 ### Pending Todos
 
@@ -107,6 +111,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-22T20:20:48.129Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-11-22T21:00:54.317Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
