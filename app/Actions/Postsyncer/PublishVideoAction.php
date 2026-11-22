@@ -114,6 +114,9 @@ class PublishVideoAction
             if ($progress === null) {
                 return;
             }
+            // Correlation for the remaining events: prepareProgress just
+            // wrote the authoritative operation id into the progress.
+            $eventOperationId = $this->eventOperationId($progress);
             $this->assertAccountsConfigured($config, $groups);
             $completedGroups = $this->completedGroups($progress);
 
@@ -148,6 +151,17 @@ class PublishVideoAction
                         if (! $this->saveProgressForRun($video, $progress, $runToken)) {
                             return;
                         }
+                        // D-07: recorded after the checkpoint transaction
+                        // committed — never inside it (D-04 checkpoint).
+                        $this->recordCheckpointEvent(
+                            $video,
+                            $groupKey,
+                            count($completedGroups),
+                            $progress,
+                            $jobId,
+                            $eventOperationId,
+                            $runToken,
+                        );
 
                         if ($group->mediaUrls !== []) {
                             $mediaIds = $client->uploadFilesFromUrls(
@@ -168,6 +182,15 @@ class PublishVideoAction
                             if (! $this->saveProgressForRun($video, $progress, $runToken)) {
                                 return;
                             }
+                            $this->recordCheckpointEvent(
+                                $video,
+                                $groupKey,
+                                count($completedGroups),
+                                $progress,
+                                $jobId,
+                                $eventOperationId,
+                                $runToken,
+                            );
                         }
                     }
 
@@ -190,6 +213,15 @@ class PublishVideoAction
                     if (! $this->saveProgressForRun($video, $progress, $runToken)) {
                         return;
                     }
+                    $this->recordCheckpointEvent(
+                        $video,
+                        $groupKey,
+                        count($completedGroups),
+                        $progress,
+                        $jobId,
+                        $eventOperationId,
+                        $runToken,
+                    );
 
                     $result = $client->createPost($body, $idempotencyKey.':post');
                     $video->refresh();
@@ -226,6 +258,15 @@ class PublishVideoAction
                     if (! $this->saveProgressForRun($video, $progress, $runToken)) {
                         return;
                     }
+                    $this->recordCheckpointEvent(
+                        $video,
+                        $groupKey,
+                        count($completedGroups),
+                        $progress,
+                        $jobId,
+                        $eventOperationId,
+                        $runToken,
+                    );
                 }
             }
 
@@ -244,20 +285,20 @@ class PublishVideoAction
             $progress['state'] = 'succeeded';
             $progress['completed_groups'] = $completedGroups;
             $progress['current'] = null;
-            DB::transaction(function () use (
+            $finalized = DB::transaction(function () use (
                 $video,
                 $options,
                 $plan,
                 $publishedGroups,
                 $progress,
                 $runToken,
-            ): void {
+            ): bool {
                 $lockedVideo = Video::query()
                     ->whereKey($video->getKey())
                     ->lockForUpdate()
                     ->firstOrFail();
                 if (! $this->runTokenMatches($lockedVideo->publish_progress, $runToken)) {
-                    return;
+                    return false;
                 }
 
                 if (! $lockedVideo->isPublishInProgress()) {
@@ -287,7 +328,23 @@ class PublishVideoAction
                     'publish_progress' => $progress,
                 ])->save();
                 app(ContinueSplitOnSocialreinsAction::class)->handle($lockedVideo);
+
+                return true;
             });
+
+            // D-07: recorded AFTER the finalize transaction returned — never
+            // inside it. Observation only: publish behavior unchanged.
+            if ($finalized) {
+                $this->recorder->record(PublishEventData::finalize(
+                    workspaceId: $video->workspace_id,
+                    publishableType: $video::class,
+                    publishableId: (int) $video->getKey(),
+                    outcome: 'succeeded',
+                    jobId: $jobId,
+                    operationId: $eventOperationId,
+                    runToken: $runToken,
+                ));
+            }
         } catch (Throwable $e) {
             $unknownOutcome = $this->recordFailureForRun(
                 $video,
@@ -306,6 +363,8 @@ class PublishVideoAction
             if (! $unknownOutcome
                 && ! ($e instanceof PostsyncerException && ! $e->retryable)
                 && ! ($e instanceof \InvalidArgumentException)) {
+                $this->recordRetryEvent($video, $e, $jobId, $eventOperationId, $runToken, $attempt);
+
                 throw $e;
             }
 
@@ -319,8 +378,23 @@ class PublishVideoAction
                 && (($e instanceof PostsyncerException && $e->retryable)
                     || $e instanceof ConnectionException)
                 && ! ($e instanceof PostsyncerException && $e->safeToRetry)) {
+                $this->recordRetryEvent($video, $e, $jobId, $eventOperationId, $runToken, $attempt);
+
                 throw $e;
             }
+
+            // Terminal for this run: the failure (failed or uncertain) stays
+            // in the record. D-07: recorded AFTER recordFailureForRun()'s
+            // transaction returned — never inside it.
+            $this->recorder->record(PublishEventData::finalize(
+                workspaceId: $video->workspace_id,
+                publishableType: $video::class,
+                publishableId: (int) $video->getKey(),
+                outcome: 'failed',
+                jobId: $jobId,
+                operationId: $eventOperationId,
+                runToken: $runToken,
+            ));
         }
     }
 
@@ -1849,6 +1923,67 @@ class PublishVideoAction
         return is_string($persisted) && trim($persisted) !== ''
             ? $persisted
             : null;
+    }
+
+    /**
+     * Retry-stage event for an attempt being handed back to the queue
+     * worker's retry policy (D-04). Only the exception class short name is
+     * carried — no messages, no stack traces, no config (Pitfall 4).
+     */
+    private function recordRetryEvent(
+        Video $video,
+        Throwable $exception,
+        ?string $jobId,
+        ?string $operationId,
+        string $runToken,
+        ?int $attempt,
+    ): void {
+        $this->recorder->record(PublishEventData::retry(
+            workspaceId: $video->workspace_id,
+            publishableType: $video::class,
+            publishableId: (int) $video->getKey(),
+            reason: class_basename($exception),
+            attempt: $attempt,
+            jobId: $jobId,
+            operationId: $operationId,
+            runToken: $runToken,
+        ));
+    }
+
+    /**
+     * Checkpoint-stage event for one committed progress checkpoint (D-04).
+     * Must be called only AFTER the checkpoint's DB::transaction returned —
+     * never inside it (D-07). Payload carries the group key, completed
+     * count, and the persisted phase: ids, counts, and statuses only.
+     *
+     * @param  array<string, mixed>  $progress
+     */
+    private function recordCheckpointEvent(
+        Video $video,
+        string $groupKey,
+        int $completedCount,
+        array $progress,
+        ?string $jobId,
+        ?string $operationId,
+        string $runToken,
+    ): void {
+        $this->recorder->record(PublishEventData::checkpoint(
+            workspaceId: $video->workspace_id,
+            publishableType: $video::class,
+            publishableId: (int) $video->getKey(),
+            groupKey: $groupKey,
+            jobId: $jobId,
+            operationId: $operationId,
+            runToken: $runToken,
+            provider: 'postsyncer',
+            payload: [
+                'group' => $groupKey,
+                'completed' => $completedCount,
+                'phase' => is_array($progress['current'] ?? null)
+                    ? ($progress['current']['phase'] ?? null)
+                    : 'completed',
+            ],
+        ));
     }
 
     /**

@@ -57,7 +57,7 @@ class PublishToSocialreinsAction
             $subject = $this->claim($subject, $options);
         } catch (PostsyncerException|InvalidArgumentException $exception) {
             // The approval, the Telegram request or its bot connection changed: nothing was sent.
-            $this->markFailed($subject, $exception->getMessage());
+            $this->markFailed($subject, $exception->getMessage(), $jobId);
 
             return;
         }
@@ -76,15 +76,23 @@ class PublishToSocialreinsAction
             operationId: $this->eventOperationId($subject->publish_progress),
         ));
 
+        $confirmed = 0;
+
         try {
             $rows = SocialreinsResults::rowsOf($subject);
             $pending = array_values(array_filter($rows, fn (SocialreinsGroup $row): bool => $row->state === SocialreinsGroup::PENDING));
 
             if ($pending !== []) {
                 foreach ($pending as $row) {
-                    if ($this->resolve->handle($row) === ResolveSocialreinsGroupAction::MISSING) {
-                        $this->send($row);
+                    if ($this->resolve->handle($row) === ResolveSocialreinsGroupAction::MISSING
+                        && ! $this->send($row)) {
+                        // The send failed (row closed or still pending) — not
+                        // a confirmed checkpoint for this run.
+                        continue;
                     }
+
+                    $confirmed++;
+                    $this->recordCheckpointEvent($subject, $row, $confirmed, $jobId);
                 }
             } else {
                 $fresh = $this->createRows($subject, $rows, $options);
@@ -95,30 +103,95 @@ class PublishToSocialreinsAction
                 }
 
                 foreach ($fresh as $row) {
-                    $this->send($row);
+                    if (! $this->send($row)) {
+                        continue;
+                    }
+
+                    $confirmed++;
+                    $this->recordCheckpointEvent($subject, $row, $confirmed, $jobId);
                 }
             }
         } catch (SocialreinsException|PostsyncerException|InvalidArgumentException $exception) {
-            $this->markFailed($subject, $exception->getMessage());
+            $this->markFailed($subject, $exception->getMessage(), $jobId);
 
             return;
         }
 
         $this->settle->handle($subject, fromJob: true);
 
-        if (($subject->fresh()?->publish_state) === 'running') {
-            $this->markFailed($subject, 'SocialReins returned no posts to track.');
+        $state = $subject->fresh()?->publish_state;
+
+        // Terminal outcomes are recorded after settle's transactions returned
+        // (D-07). markFailed records the failed twin itself when it performs
+        // the transition.
+        if ($state === 'succeeded') {
+            $this->recorder->record(PublishEventData::finalize(
+                workspaceId: $subject->workspace_id,
+                publishableType: $subject::class,
+                publishableId: (int) $subject->getKey(),
+                outcome: 'succeeded',
+                jobId: $jobId,
+                operationId: $this->eventOperationId($subject->publish_progress),
+            ));
+
+            return;
+        }
+
+        if ($state === 'running') {
+            $this->markFailed($subject, 'SocialReins returned no posts to track.', $jobId);
+
+            return;
+        }
+
+        if ($state === 'failed') {
+            // The settle action settled the failure itself (every target
+            // failed or is unknown) — markFailed only writes for queued/running
+            // subjects, so the run's terminal outcome is recorded here.
+            $this->recorder->record(PublishEventData::finalize(
+                workspaceId: $subject->workspace_id,
+                publishableType: $subject::class,
+                publishableId: (int) $subject->getKey(),
+                outcome: 'failed',
+                jobId: $jobId,
+                operationId: $this->eventOperationId($subject->publish_progress),
+            ));
         }
     }
 
-    /** Fail a publish that is still running; a state a webhook already settled is kept. */
-    public function markFailed(Post|Video $subject, string $message): void
+    /**
+     * Checkpoint-stage event for one confirmed SocialReins group send (D-04).
+     * Must be called only AFTER the send's row mutation committed — never
+     * inside a transaction (D-07). Payload carries the language group key and
+     * the run's confirmed-group count: ids and counts only (Pitfall 4).
+     */
+    private function recordCheckpointEvent(
+        Post|Video $subject,
+        SocialreinsGroup $row,
+        int $completedCount,
+        ?string $jobId,
+    ): void {
+        $this->recorder->record(PublishEventData::checkpoint(
+            workspaceId: $subject->workspace_id,
+            publishableType: $subject::class,
+            publishableId: (int) $subject->getKey(),
+            groupKey: $row->language,
+            jobId: $jobId,
+            provider: 'socialreins',
+            payload: ['group' => $row->language, 'completed' => $completedCount],
+        ));
+    }
+
+    /**
+     * Fail a publish that is still running; a state a webhook already settled
+     * is kept. Returns whether the transition was performed.
+     */
+    public function markFailed(Post|Video $subject, string $message, ?string $jobId = null): bool
     {
-        DB::transaction(function () use ($subject, $message): void {
+        $recorded = DB::transaction(function () use ($subject, $message): bool {
             $locked = $subject::query()->whereKey($subject->getKey())->lockForUpdate()->first();
 
             if ($locked === null || ! in_array($locked->publish_state, ['queued', 'running'], true)) {
-                return;
+                return false;
             }
 
             $locked->forceFill(['publish_state' => 'failed', 'publish_error' => $message])->save();
@@ -126,7 +199,24 @@ class PublishToSocialreinsAction
             if ($locked instanceof Post) {
                 SettleSocialreinsSubjectAction::closeTelegramRequest($locked, 'failed', $message);
             }
+
+            return true;
         });
+
+        // D-07: recorded AFTER markFailed's transaction returned — never
+        // inside it. Observation only: behavior unchanged.
+        if ($recorded) {
+            $this->recorder->record(PublishEventData::finalize(
+                workspaceId: $subject->workspace_id,
+                publishableType: $subject::class,
+                publishableId: (int) $subject->getKey(),
+                outcome: 'failed',
+                jobId: $jobId,
+                operationId: $this->eventOperationId($subject->publish_progress),
+            ));
+        }
+
+        return $recorded;
     }
 
     /**
@@ -434,7 +524,11 @@ class PublishToSocialreinsAction
             : 'Nothing to send: no platform is enabled for this post, or it is already published or still publishing.';
     }
 
-    private function send(SocialreinsGroup $row): void
+    /**
+     * Send one frozen group request. Returns whether the send was confirmed
+     * (the row reached `created`); a refused or unanswered send is not.
+     */
+    private function send(SocialreinsGroup $row): bool
     {
         $client = new SocialreinsClient(SocialreinsConfig::fromWorkspace($row->workspace), $row->language);
 
@@ -454,9 +548,11 @@ class PublishToSocialreinsAction
                 $this->resolve->handle($row);
             }
 
-            return;
+            return false;
         }
 
         $this->resolve->markCreated($row, $body);
+
+        return true;
     }
 }

@@ -64,6 +64,7 @@ class PublishSocialreinsJob implements ShouldQueue
         app(PublishToSocialreinsAction::class)->markFailed(
             $this->subject,
             $exception?->getMessage() ?? 'The SocialReins publish job failed.',
+            $this->job?->uuid(),
         );
 
         if ($exception !== null) {
