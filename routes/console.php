@@ -50,3 +50,7 @@ Schedule::command('postsyncer:dispatch-pending-publishes')
 Schedule::command('postsyncer:watchdog')
     ->everyMinute()
     ->withoutOverlapping(2);
+
+Schedule::command('publish-events:prune')
+    ->daily()
+    ->withoutOverlapping(10);
