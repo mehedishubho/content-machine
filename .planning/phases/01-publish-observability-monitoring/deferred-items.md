@@ -11,3 +11,10 @@
   credentials (auth fails for user "root") — tests therefore run against a disposable
   postgres:17 container (gsd-testing-pg, port 5544, CI-equivalent credentials).
   status: open
+- Windows full-suite runs at the default memory limit die mid-suite with "Premature end of
+  PHP process" inside stream/proc-heavy tests (PostsyncerClientTest upload/download,
+  HttpTelegramClientTest download, PostsApiTest motion upload). 01-02 verified the crash
+  reproduces at HEAD without plan 01-02 changes (control run) and completes green with
+  `php -d memory_limit=4G ./vendor/bin/pest` (1603/1606 — only the 3 platform failures
+  above). Run long suites on this machine with a raised memory limit.
+  status: open
