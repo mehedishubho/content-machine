@@ -46,3 +46,7 @@ Schedule::command('socialreins:reconcile')
 Schedule::command('postsyncer:dispatch-pending-publishes')
     ->everyMinute()
     ->withoutOverlapping(2);
+
+Schedule::command('postsyncer:watchdog')
+    ->everyMinute()
+    ->withoutOverlapping(2);
