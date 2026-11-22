@@ -18,8 +18,10 @@ final readonly class PublishEventData
      */
     public function __construct(
         public int $workspaceId,
-        public string $publishableType,
-        public int $publishableId,
+        // Client-level provider HTTP events observe no content item, so the
+        // publishable morph stays null there (nullableMorphs in the schema).
+        public ?string $publishableType,
+        public ?int $publishableId,
         public string $stage,
         public ?string $jobId = null,
         public ?string $operationId = null,
@@ -139,6 +141,35 @@ final readonly class PublishEventData
             runToken: $runToken,
             durationMs: $durationMs,
             payload: ['outcome' => $outcome],
+        );
+    }
+
+    /**
+     * One provider HTTP outcome observed by a publish client (429 rate-limit
+     * wait, connection timeout, 5xx). Statuses, waited seconds, and endpoint
+     * paths only — never request/response bodies or credentials (Pitfall 4,
+     * ASVS V7). The client observes no content item, so the publishable morph
+     * and all run correlation stay null here.
+     */
+    public static function providerHttp(
+        int $workspaceId,
+        string $provider,
+        int $status,
+        ?int $waitedSeconds,
+        string $path,
+    ): self {
+        return new self(
+            workspaceId: $workspaceId,
+            publishableType: null,
+            publishableId: null,
+            stage: 'provider_http',
+            provider: $provider,
+            payload: [
+                'provider' => $provider,
+                'status' => $status,
+                'waited_seconds' => $waitedSeconds,
+                'path' => $path,
+            ],
         );
     }
 

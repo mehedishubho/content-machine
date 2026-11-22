@@ -2,7 +2,9 @@
 
 namespace App\Support\Postsyncer;
 
+use App\Data\Observability\PublishEventData;
 use App\Support\LinkResolution\PublicUrlGuard;
+use App\Support\Observability\PublishEventRecorder;
 use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\UriResolver;
 use Illuminate\Http\Client\Response;
@@ -38,6 +40,12 @@ class PostsyncerClient
         private readonly PostsyncerConfig $config,
         private readonly ?PublicUrlGuard $urlGuard = null,
         private int $rateLimitWaitSeconds = 0,
+        // Provider HTTP outcomes (429 waits, timeouts, 5xx) become first-class
+        // publish events (D-04). Both params are optional with a nullsafe
+        // guard so every existing construction site compiles and behaves
+        // unchanged; the publish Actions pass their recorder + workspace id.
+        private readonly ?PublishEventRecorder $recorder = null,
+        private readonly ?int $workspaceId = null,
     ) {}
 
     /** X-RateLimit-Remaining from the latest response, or null when PostSyncer did not send it. */
@@ -562,6 +570,9 @@ class PostsyncerClient
                 }
 
                 $this->rateLimitWaitSeconds -= $wait;
+                // D-04: the rate-limit wait is a first-class event, recorded
+                // before the sleep so the wait itself is observable.
+                $this->recordProviderHttp($path, 429, $wait);
                 Sleep::for($wait)->seconds();
             }
         }
@@ -624,6 +635,8 @@ class PostsyncerClient
             // A connection timeout may happen after PostSyncer accepted a
             // create. Keep it in the unknown-outcome path so retries cannot
             // silently issue a second create without reconciliation.
+            // D-04: connection failures are first-class events (status 0).
+            $this->recordProviderHttp($path, 0, null);
             throw new PostsyncerException(
                 'Could not reach PostSyncer: '.$exception->getMessage(),
                 0,
@@ -638,6 +651,9 @@ class PostsyncerClient
         $this->rateLimitRemaining = ctype_digit($remaining) ? (int) $remaining : null;
 
         if (! $response->successful()) {
+            // D-04: every non-2xx HTTP outcome (5xx, raw 429, 4xx) is a
+            // first-class event; the 429 wait twin carries the waited seconds.
+            $this->recordProviderHttp($path, $response->status(), null);
             throw PostsyncerException::fromResponse($response, $create);
         }
 
@@ -694,5 +710,26 @@ class PostsyncerClient
         return is_int($id)
             ? $id > 0
             : is_string($id) && ctype_digit($id) && (int) $id > 0;
+    }
+
+    /**
+     * One provider HTTP outcome as a first-class event (D-04). No-op unless
+     * the publish path wired both the recorder and its workspace id — an
+     * event without a workspace cannot persist (workspace_id is NOT NULL)
+     * and would never match a workspace-scoped query.
+     */
+    private function recordProviderHttp(string $path, int $status, ?int $waitedSeconds): void
+    {
+        if ($this->recorder === null || $this->workspaceId === null) {
+            return;
+        }
+
+        $this->recorder->record(PublishEventData::providerHttp(
+            workspaceId: $this->workspaceId,
+            provider: 'postsyncer',
+            status: $status,
+            waitedSeconds: $waitedSeconds,
+            path: $path,
+        ));
     }
 }

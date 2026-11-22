@@ -2,6 +2,8 @@
 
 namespace App\Support\Socialreins;
 
+use App\Data\Observability\PublishEventData;
+use App\Support\Observability\PublishEventRecorder;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -19,6 +21,12 @@ class SocialreinsClient
     public function __construct(
         private readonly SocialreinsConfig $config,
         private readonly string $language,
+        // Provider HTTP outcomes (timeouts, 5xx) become first-class publish
+        // events (D-04). Both params are optional with a nullsafe guard so
+        // every existing construction site compiles and behaves unchanged;
+        // the publish Actions pass their recorder + workspace id.
+        private readonly ?PublishEventRecorder $recorder = null,
+        private readonly ?int $workspaceId = null,
     ) {}
 
     /**
@@ -29,7 +37,7 @@ class SocialreinsClient
      */
     public function createGroup(string $key, string $json): array
     {
-        $response = $this->send(fn (PendingRequest $http) => $http
+        $response = $this->send('/post-groups', fn (PendingRequest $http) => $http
             ->withHeaders(['Idempotency-Key' => $key])
             ->withBody($json, 'application/json')
             ->post($this->url('/post-groups')));
@@ -44,7 +52,7 @@ class SocialreinsClient
      */
     public function group(string $groupId): array
     {
-        $response = $this->send(fn (PendingRequest $http) => $http
+        $response = $this->send('/post-groups/'.rawurlencode($groupId), fn (PendingRequest $http) => $http
             ->get($this->url('/post-groups/'.rawurlencode($groupId))));
 
         return $this->groupBody($response);
@@ -58,7 +66,7 @@ class SocialreinsClient
      */
     public function retryGroup(string $groupId, string $key): array
     {
-        $response = $this->send(fn (PendingRequest $http) => $http
+        $response = $this->send('/post-groups/'.rawurlencode($groupId).'/retry', fn (PendingRequest $http) => $http
             ->withHeaders(['Idempotency-Key' => $key])
             ->post($this->url('/post-groups/'.rawurlencode($groupId).'/retry')));
 
@@ -74,7 +82,7 @@ class SocialreinsClient
     public function lookupKey(string $key): ?array
     {
         try {
-            return $this->decode($this->send(fn (PendingRequest $http) => $http
+            return $this->decode($this->send('/idempotency/'.rawurlencode($key), fn (PendingRequest $http) => $http
                 ->get($this->url('/idempotency/'.rawurlencode($key)))));
         } catch (SocialreinsException $exception) {
             if ($exception->status === 404) {
@@ -107,7 +115,7 @@ class SocialreinsClient
      */
     public function deletePost(string $postId, string $key): array
     {
-        $response = $this->send(fn (PendingRequest $http) => $http
+        $response = $this->send('/posts/'.rawurlencode($postId), fn (PendingRequest $http) => $http
             ->withHeaders(['Idempotency-Key' => $key])
             ->delete($this->url('/posts/'.rawurlencode($postId))));
 
@@ -121,7 +129,7 @@ class SocialreinsClient
      */
     public function post(string $postId): array
     {
-        return $this->decode($this->send(fn (PendingRequest $http) => $http
+        return $this->decode($this->send('/posts/'.rawurlencode($postId), fn (PendingRequest $http) => $http
             ->get($this->url('/posts/'.rawurlencode($postId)))));
     }
 
@@ -134,12 +142,15 @@ class SocialreinsClient
      */
     public function updatePost(string $postId, array $body): array
     {
-        return $this->decode($this->send(fn (PendingRequest $http) => $http
+        return $this->decode($this->send('/posts/'.rawurlencode($postId), fn (PendingRequest $http) => $http
             ->put($this->url('/posts/'.rawurlencode($postId)), $body)));
     }
 
-    /** @param  callable(PendingRequest): Response  $call */
-    private function send(callable $call): Response
+    /**
+     * @param  string  $path  Endpoint path of the call, for the provider HTTP event.
+     * @param  callable(PendingRequest): Response  $call
+     */
+    private function send(string $path, callable $call): Response
     {
         $token = $this->config->token($this->language);
         if ($token === null) {
@@ -148,7 +159,7 @@ class SocialreinsClient
 
         try {
             // The token only ever goes to a public HTTPS host, on the addresses just
-            // checked, and never follows a redirect (which would carry it elsewhere).
+            // checked, and never follows a redirect (which would send the token elsewhere).
             $base = (new SocialreinsBaseUrl)->resolve($this->config->baseUrl());
             $this->resolved = $base['url'];
             $response = $call(Http::withToken($token)->acceptJson()->timeout(30)
@@ -156,12 +167,17 @@ class SocialreinsClient
         } catch (\InvalidArgumentException $exception) {
             throw new SocialreinsException($exception->getMessage());
         } catch (ConnectionException $exception) {
+            // D-04: connection failures are first-class events (status 0).
+            $this->recordProviderHttp($path, 0, null);
             throw new SocialreinsException('SocialReins could not be reached: '.$exception->getMessage());
         }
 
         if ($response->successful()) {
             return $response;
         }
+
+        // D-04: every non-2xx HTTP outcome (5xx, 429, 4xx) is a first-class event.
+        $this->recordProviderHttp($path, $response->status(), null);
 
         $code = $response->json('error');
         $detail = $response->json('message');
@@ -204,5 +220,26 @@ class SocialreinsClient
     private function url(string $path): string
     {
         return $this->resolved.$path;
+    }
+
+    /**
+     * One provider HTTP outcome as a first-class event (D-04). No-op unless
+     * the publish path wired both the recorder and its workspace id — an
+     * event without a workspace cannot persist (workspace_id is NOT NULL)
+     * and would never match a workspace-scoped query.
+     */
+    private function recordProviderHttp(string $path, int $status, ?int $waitedSeconds): void
+    {
+        if ($this->recorder === null || $this->workspaceId === null) {
+            return;
+        }
+
+        $this->recorder->record(PublishEventData::providerHttp(
+            workspaceId: $this->workspaceId,
+            provider: 'socialreins',
+            status: $status,
+            waitedSeconds: $waitedSeconds,
+            path: $path,
+        ));
     }
 }

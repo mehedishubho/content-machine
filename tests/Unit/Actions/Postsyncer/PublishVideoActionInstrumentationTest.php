@@ -9,6 +9,7 @@ use App\Models\Workspace;
 use App\Support\LinkResolution\PublicUrlGuard;
 use App\Support\Postsyncer\MediaUrlResolver;
 use App\Support\Postsyncer\PostsyncerConfig;
+use App\Support\Postsyncer\PostsyncerException;
 use App\Support\Postsyncer\VideoPublishPlanner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -266,6 +267,42 @@ class PublishVideoActionInstrumentationTest extends TestCase
         $contexts = $this->publishEventContexts();
         $finalize = $contexts[count($contexts) - 1];
         $this->assertSame('failed', $finalize['payload']['outcome']);
+    }
+
+    /**
+     * A transient media failure (503) is handed back to the queue worker and
+     * emits a retry event with the exception short name and the worker
+     * attempt (OBS-05 groundwork on the video path).
+     */
+    public function test_transient_media_failure_emits_retry_event_before_rethrow(): void
+    {
+        Http::fake([
+            'drive.usercontent.google.com/*' => fn () => Http::response('fake-media-bytes', 200),
+            'upload.postsyncer.com/api/v1/media/upload/file' => Http::response(['message' => 'temporary outage'], 503),
+        ]);
+
+        $workspace = Workspace::factory()->create();
+        $this->configureWorkspace($workspace);
+        $video = $this->makeVideo($workspace);
+
+        try {
+            $this->action->handle($video, ['platforms' => ['facebook', 'instagram'], 'confirm_ask' => false], runToken: 'run-vid-5', jobId: 'job-vid-5', attempt: 2);
+            $this->fail('A retryable media failure must surface to the queue worker.');
+        } catch (PostsyncerException) {
+            // The queue-worker retry path this test exercises.
+        }
+
+        $stages = $this->publishEventStages();
+        $this->assertSame('claim', $stages[0]);
+        $this->assertNotContains('finalize', $stages);
+        $this->assertSame('retry', $stages[count($stages) - 1]);
+
+        $contexts = $this->publishEventContexts();
+        $retry = $contexts[count($contexts) - 1];
+        $this->assertSame('PostsyncerException', $retry['payload']['reason']);
+        $this->assertSame(2, $retry['payload']['attempt']);
+        $this->assertSame('job-vid-5', $retry['job_id']);
+        $this->assertSame('run-vid-5', $retry['run_token']);
     }
 
     /**

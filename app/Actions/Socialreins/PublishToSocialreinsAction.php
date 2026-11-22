@@ -451,7 +451,13 @@ class PublishToSocialreinsAction
 
     private function retryGroup(SocialreinsGroup $row): void
     {
-        $client = new SocialreinsClient(SocialreinsConfig::fromWorkspace($row->workspace), $row->language);
+        $client = new SocialreinsClient(
+            SocialreinsConfig::fromWorkspace($row->workspace),
+            $row->language,
+            // Provider HTTP outcomes of the run's group retry become events.
+            $this->recorder,
+            $row->workspace_id,
+        );
         // One key per attempt: the retry has no body, so a reused key would replay an old answer.
         $key = "cm:ws{$row->workspace_id}:retry:{$row->group_id}:{$row->retry_attempt}";
 
@@ -530,7 +536,13 @@ class PublishToSocialreinsAction
      */
     private function send(SocialreinsGroup $row): bool
     {
-        $client = new SocialreinsClient(SocialreinsConfig::fromWorkspace($row->workspace), $row->language);
+        $client = new SocialreinsClient(
+            SocialreinsConfig::fromWorkspace($row->workspace),
+            $row->language,
+            // Provider HTTP outcomes of the run's group send become events.
+            $this->recorder,
+            $row->workspace_id,
+        );
 
         try {
             $body = $client->createGroup($row->idempotency_key, $row->request);

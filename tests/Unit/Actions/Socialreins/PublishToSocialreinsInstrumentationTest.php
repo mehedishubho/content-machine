@@ -137,14 +137,17 @@ class PublishToSocialreinsInstrumentationTest extends TestCase
         $this->assertStringContainsString('SocialReins answered 500', (string) $post->publish_error);
 
         $stages = $this->publishEventStages();
-        $this->assertSame(['claim', 'finalize'], $stages);
+        // The wired client emits the raw 500 provider_http outcome between
+        // the claim and the failure finalize.
+        $this->assertSame(['claim', 'provider_http', 'finalize'], $stages);
         $this->assertSame('claim', $stages[0]);
+        $this->assertSame(500, $this->publishEventContexts()[1]['payload']['status']);
 
         $contexts = $this->publishEventContexts();
         $finalize = $contexts[count($contexts) - 1];
         $this->assertSame('failed', $finalize['payload']['outcome']);
         $this->assertSame('job-sr-2', $finalize['job_id']);
-        $this->assertSame(2, PublishEvent::query()->count());
+        $this->assertSame(3, PublishEvent::query()->count());
     }
 
     /**

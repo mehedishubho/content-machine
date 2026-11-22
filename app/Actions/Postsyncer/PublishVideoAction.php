@@ -92,6 +92,9 @@ class PublishVideoAction
             $client = new PostsyncerClient(
                 $config,
                 rateLimitWaitSeconds: PostsyncerClient::PUBLISH_RATE_LIMIT_WAIT_SECONDS,
+                // Provider HTTP outcomes of the publish run become events.
+                recorder: $this->recorder,
+                workspaceId: $video->workspace_id,
             );
             $groups = $this->planner->plan($video, $config, $options);
 
@@ -445,7 +448,7 @@ class PublishVideoAction
             );
         }
 
-        $client = new PostsyncerClient($config);
+        $client = new PostsyncerClient($config, recorder: $this->recorder, workspaceId: $video->workspace_id);
         $remote = $this->normalizePostResponse($client->getPostWithAccountDetails($postsyncerPostId));
         $this->assertReconciledPost(
             $remote,
@@ -882,7 +885,7 @@ class PublishVideoAction
         }
 
         $completedGroups = $this->completedGroups($progress);
-        $client = new PostsyncerClient($config);
+        $client = new PostsyncerClient($config, recorder: $this->recorder, workspaceId: $video->workspace_id);
 
         foreach ($storedGroups as $planned) {
             $index = $planned['index'];

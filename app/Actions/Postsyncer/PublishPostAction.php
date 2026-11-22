@@ -121,6 +121,9 @@ class PublishPostAction
             $client = new PostsyncerClient(
                 $config,
                 rateLimitWaitSeconds: PostsyncerClient::PUBLISH_RATE_LIMIT_WAIT_SECONDS,
+                // Provider HTTP outcomes of the publish run become events.
+                recorder: $this->recorder,
+                workspaceId: $post->workspace_id,
             );
             $groups = $this->planner->plan($post, $config, $options);
 
@@ -558,7 +561,7 @@ class PublishPostAction
             );
         }
 
-        $client = new PostsyncerClient($config);
+        $client = new PostsyncerClient($config, recorder: $this->recorder, workspaceId: $post->workspace_id);
         $remote = $this->normalizePostResponse($client->getPostWithAccountDetails($postsyncerPostId));
         $remoteStatus = strtoupper((string) ($remote['status'] ?? ''));
         $failedPlatforms = $this->failedPlatforms($remote);
@@ -765,7 +768,7 @@ class PublishPostAction
             );
         }
 
-        $client = new PostsyncerClient($config);
+        $client = new PostsyncerClient($config, recorder: $this->recorder, workspaceId: $post->workspace_id);
         $remote = $this->normalizePostResponse(
             $client->getPostWithAccountDetails($postsyncerPostId),
         );
@@ -1380,7 +1383,7 @@ class PublishPostAction
             $this->assertSameGroupExceptSchedule($oldGroup, $newGroup);
         }
 
-        $client = new PostsyncerClient($config);
+        $client = new PostsyncerClient($config, recorder: $this->recorder, workspaceId: $post->workspace_id);
         $rebasedCompleted = [];
         foreach ($completedGroups as $completed) {
             $index = $completed['index'] ?? null;
@@ -1545,7 +1548,7 @@ class PublishPostAction
         }
 
         $targetAccount = $this->findRepairAccount(
-            new PostsyncerClient($config),
+            new PostsyncerClient($config, recorder: $this->recorder, workspaceId: $post->workspace_id),
             $postsyncerWorkspaceId,
             $mapping,
         );
@@ -1890,7 +1893,7 @@ class PublishPostAction
         }
 
         $completedGroups = $this->completedGroups($progress);
-        $client = new PostsyncerClient($config);
+        $client = new PostsyncerClient($config, recorder: $this->recorder, workspaceId: $post->workspace_id);
 
         foreach ($storedGroups as $planned) {
             $index = $planned['index'];
