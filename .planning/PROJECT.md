@@ -48,6 +48,17 @@ and defended by tests.
 - [ ] Publish progress normalization + throughput: per-group table, bounded provider waits, rate-limit fairness, per-group fan-out (PUB-01..04)
 - [ ] Guardrails: PostSyncer↔SocialReins routing matrix tests, one routing source of truth, workspace-scope guard, MCP error paths (SAFE-01..04)
 - [ ] Workspace API completeness: deck upload, idea promotion, rate limiting (API-01..03)
+- [ ] Recurring automation engine: content recipes with one-time setup and daily generation/publishing through the existing pipeline (AUTO-01..05)
+- [ ] Data-source connectors: weather, prayer times, hadith, jobs, currency, stock, AQI, date-content behind Contracts interfaces (DATA-01..08)
+- [ ] Branded graphic generation: per-category card templates with Bengali/English text shaping, output as publishable media (GFX-01..05)
+- [ ] News portal ingestion: WordPress REST connector, article→post drafts, article URLs as first comments, news photo cards (NEWS-01..04)
+- [ ] Daily category rollout: the eleven daily categories live on the automation engine (CAT-01..03)
+- [ ] Shorts video pipeline: daily Top-5-news vertical video generation published to YouTube (VID-01..03)
+
+*(Track 2 — AUTO through VID — added 2026-11-22 from the feature-parity audit against the
+OurDesh-style news-automation system. Already covered by the existing codebase: Facebook
+publishing with first-comment links, 24/7 scheduled publishing of created content, AI captions,
+approval workflow, video publishing, stock photography. Not covered: everything in Track 2.)*
 
 ### Out of Scope
 
