@@ -2,6 +2,7 @@
 
 namespace App\Support\Observability;
 
+use App\Contracts\PublishErrorContext;
 use App\Data\Observability\PublishEventData;
 use App\Models\PublishEvent;
 use Illuminate\Support\Facades\Log;
@@ -25,9 +26,32 @@ use Throwable;
  */
 final class PublishEventRecorder
 {
+    /**
+     * The error-tracking context rides the same seam. The concrete default
+     * mirrors the actions' `new PublishEventRecorder` constructor defaults
+     * (plan 01-01): production call sites build the recorder directly with
+     * `new`, so a null default would leave every publish event silently
+     * without error-tracking context (D-10). Tests inject a spy through
+     * this parameter; an explicit null keeps a recorder fully inert.
+     */
+    public function __construct(
+        private readonly ?PublishErrorContext $errorContext = new SentryPublishErrorContext,
+    ) {}
+
     public function record(PublishEventData $event): void
     {
         Log::channel('publish')->info('publish_event', $event->toArray());
+
+        // D-10: the same identifiers reach the error tracker at this single
+        // seam — after the log line, before the best-effort DB write. An
+        // attach() failure must never reach the publish path: same swallow
+        // discipline as the DB write below (D-07, instrumentation is
+        // non-fatal).
+        try {
+            $this->errorContext?->attach($event);
+        } catch (Throwable) {
+            // Swallow: instrumentation failure must never fail a publish.
+        }
 
         try {
             PublishEvent::create([
