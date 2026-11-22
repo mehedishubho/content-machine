@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Publish Observability & Monitoring
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-11-22T11:06:16.844Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-11-22T20:20:48.153Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 01 execution started
-state_head: 1cdc4ed9b4d9e5aad3b60f4708f85a939d1d63f9
+state_head: 0e8011c3ecca99818bd9341cf9c88e44d4a1c2bf
 progress:
   total_phases: 11
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -41,7 +41,7 @@ See: .planning/PROJECT.md (updated 2026-11-22)
 ## Current Position
 
 Phase: 01 (Publish Observability & Monitoring) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 01 execution started
 
@@ -70,6 +70,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 61 min | 3 tasks | 11 files |
+| Phase 01 P02 | 326 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,8 @@ Recent decisions affecting current work:
 - [Phase 01]: Recorder seam with a concrete `new PublishEventRecorder` constructor default so direct `new PublishPostAction(...)` call sites keep working
 - [Phase 01]: Event operation ids resolve from persisted progress after prepareProgress, dispatch param as claim-event fallback
 - [Phase 01]: Retry attempt count sourced from the queue worker via a new optional ?int handle() param
+- [Phase 01]: Provider HTTP events take an optional nullsafe recorder plus workspace id (a workspace-less event can never persist, workspace_id is NOT NULL FK); unmodified call sites stay silent
+- [Phase 01]: Run-level finalize(failed) sits at the handle() catch fall-through on both publish actions (post-path 01-01 parity); operator reconcile/recover transitions stay uninstrumented on both paths for watchdog-count truthfulness
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-22T11:06:09.085Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-11-22T20:20:48.129Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
