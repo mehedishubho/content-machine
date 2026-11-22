@@ -9,6 +9,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -55,4 +56,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->is('mcp') || $request->expectsJson(),
         );
+
+        // Sentry error tracking (OBS-04 / D-09): the SDK hooks the shared
+        // exception handler here — the only delivery path. Publish-path
+        // report() calls reach it without new capture plumbing; the context
+        // itself is attached at the PublishEventRecorder seam. Inert while
+        // SENTRY_LARAVEL_DSN is unset.
+        Integration::handles($exceptions);
     })->create();
