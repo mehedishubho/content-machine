@@ -55,10 +55,15 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 5 plans
 
 Plans:
+**Wave 1**
 - [ ] 01-01-PLAN.md — Publish-event pipeline: publish_events table, PublishEventRecorder seam, publish JSON log channel, PublishPostAction lifecycle instrumentation (OBS-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — Video + SocialReins path instrumentation and provider HTTP outcome events (OBS-01, OBS-05)
 - [ ] 01-03-PLAN.md — Stuck-publish watchdog with Telegram alerting and 90-day retention prune (OBS-02, OBS-05)
 - [ ] 01-04-PLAN.md — Sentry error tracking with publish correlation context (OBS-04)
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 01-05-PLAN.md — Observability dashboard: success-rate page + Publish health home card (OBS-03, OBS-05)
 
 **UI hint**: yes
