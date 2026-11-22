@@ -2,10 +2,12 @@
 
 namespace App\Actions\Socialreins;
 
+use App\Data\Observability\PublishEventData;
 use App\Models\Post;
 use App\Models\SocialreinsGroup;
 use App\Models\TelegramPostRequest;
 use App\Models\Video;
+use App\Support\Observability\PublishEventRecorder;
 use App\Support\Postsyncer\PostPublishPlanner;
 use App\Support\Postsyncer\PostsyncerException;
 use App\Support\Postsyncer\PublishGroup;
@@ -42,10 +44,14 @@ class PublishToSocialreinsAction
         private readonly SettleSocialreinsSubjectAction $settle,
         private readonly ReconcileSocialreinsGroupsAction $reconcile,
         private readonly ResolveSocialreinsGroupAction $resolve,
+        // The publish-event seam (D-06). A concrete default keeps direct
+        // construction sites (jobs resolve via the container) working
+        // unchanged — instrumentation must not change call sites.
+        private readonly PublishEventRecorder $recorder = new PublishEventRecorder,
     ) {}
 
     /** @param  array{when?: string|null, platforms?: list<string>, confirm_ask?: bool, telegram_request_id?: int}  $options */
-    public function handle(Post|Video $subject, array $options = []): void
+    public function handle(Post|Video $subject, array $options = [], ?string $jobId = null): void
     {
         try {
             $subject = $this->claim($subject, $options);
@@ -59,6 +65,16 @@ class PublishToSocialreinsAction
         if ($subject === null) {
             return;
         }
+
+        // D-07: claim()'s transaction has returned — the claim event is
+        // recorded outside it. Observation only: behavior unchanged.
+        $this->recorder->record(PublishEventData::claim(
+            workspaceId: $subject->workspace_id,
+            publishableType: $subject::class,
+            publishableId: (int) $subject->getKey(),
+            jobId: $jobId,
+            operationId: $this->eventOperationId($subject->publish_progress),
+        ));
 
         try {
             $rows = SocialreinsResults::rowsOf($subject);
@@ -167,6 +183,23 @@ class PublishToSocialreinsAction
 
             return $locked;
         });
+    }
+
+    /**
+     * Correlation operation id for publish events: the persisted progress
+     * operation id when the subject carries one (split posts planned by the
+     * PostSyncer side do); legacy subjects record nullable correlation
+     * columns (OBS-01 empty edge).
+     *
+     * @param  array<string, mixed>|null  $progress
+     */
+    private function eventOperationId(mixed $progress): ?string
+    {
+        $persisted = is_array($progress) ? ($progress['operation_id'] ?? null) : null;
+
+        return is_string($persisted) && trim($persisted) !== ''
+            ? $persisted
+            : null;
     }
 
     /**

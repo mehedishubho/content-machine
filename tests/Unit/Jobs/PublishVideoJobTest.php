@@ -20,9 +20,15 @@ class PublishVideoJobTest extends TestCase
         $options = ['when' => '2026-08-26T09:12:00+06:00', 'confirm_ask' => true];
 
         $action = Mockery::mock(PublishVideoAction::class);
+        // Trailing nulls are the optional jobId/attempt params: publish-event
+        // correlation (OBS-01) rides along from the queue worker, and both are
+        // null when the job is handled outside one (this test).
         $action->shouldReceive('handle')->once()->with(
             Mockery::on(fn (Video $v) => $v->is($video)),
             $options,
+            null,
+            null,
+            null,
         );
 
         (new PublishVideoJob($video, $options))->handle($action);
@@ -41,6 +47,9 @@ class PublishVideoJobTest extends TestCase
         $action->shouldReceive('handle')->once()->with(
             Mockery::on(fn (Video $v) => $v->is($video)),
             $options,
+            null,
+            null,
+            null,
         );
 
         $job->handle($action);

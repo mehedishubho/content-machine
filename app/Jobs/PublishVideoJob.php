@@ -147,9 +147,15 @@ class PublishVideoJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        // Publish-event correlation (OBS-01). Null when this job instance was
+        // constructed/handled outside a queue worker (direct tests, sync
+        // dispatch fallbacks) — events stay queryable via operation/run ids.
+        $jobId = $this->job?->uuid();
+        $attempt = $this->job?->attempts();
+
         if ($runToken === null) {
             try {
-                $action->handle($this->video, $this->options);
+                $action->handle($this->video, $this->options, jobId: $jobId, attempt: $attempt);
             } finally {
                 $progress = $this->video->fresh()?->publish_progress;
                 $this->effectiveRunToken = is_array($progress)
@@ -162,7 +168,7 @@ class PublishVideoJob implements ShouldBeUnique, ShouldQueue
         }
 
         $this->effectiveRunToken = $runToken;
-        $action->handle($this->video, $this->options, $runToken);
+        $action->handle($this->video, $this->options, $runToken, jobId: $jobId, attempt: $attempt);
     }
 
     private function isCurrentRun(Video $video, ?string $runToken = null): bool

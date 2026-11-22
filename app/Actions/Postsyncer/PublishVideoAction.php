@@ -3,8 +3,10 @@
 namespace App\Actions\Postsyncer;
 
 use App\Actions\Socialreins\ContinueSplitOnSocialreinsAction;
+use App\Data\Observability\PublishEventData;
 use App\Models\Video;
 use App\Models\Workspace;
+use App\Support\Observability\PublishEventRecorder;
 use App\Support\Postsyncer\LegacyPublishProgress;
 use App\Support\Postsyncer\PostsyncerClient;
 use App\Support\Postsyncer\PostsyncerConfig;
@@ -22,13 +24,23 @@ class PublishVideoAction
 {
     public function __construct(
         private readonly VideoPublishPlanner $planner,
+        // The publish-event seam (D-06). A concrete default keeps direct
+        // construction sites (jobs resolve via the container; existing tests
+        // construct `new PublishVideoAction(new VideoPublishPlanner(...))`)
+        // working unchanged — instrumentation must not change call sites.
+        private readonly PublishEventRecorder $recorder = new PublishEventRecorder,
     ) {}
 
     /**
      * @param  array{when?: string|null, platforms?: list<string>, confirm_ask?: bool}  $options
      */
-    public function handle(Video $video, array $options, ?string $runToken = null): void
-    {
+    public function handle(
+        Video $video,
+        array $options,
+        ?string $runToken = null,
+        ?string $jobId = null,
+        ?int $attempt = null,
+    ): void {
         $video->refresh();
         $originalStatus = $video->status;
         $publishError = $video->publish_error;
@@ -41,6 +53,11 @@ class PublishVideoAction
             ? $progress['run_token']
             : (string) Str::uuid();
 
+        // Failure paths can fire before prepareProgress runs, so the
+        // correlation id is seeded from the pre-claim progress (resume runs
+        // already carry an operation id) and re-derived mid-run below.
+        $eventOperationId = $this->eventOperationId($progress);
+
         // A duplicate delivery after finalization must not create another
         // PostSyncer post.
         if ($video->publish_state === 'succeeded' && $this->hasExistingPublicGroup($video)) {
@@ -50,6 +67,17 @@ class PublishVideoAction
         if (! $this->startRun($video, $runToken)) {
             return;
         }
+
+        // D-07: startRun()'s transaction has returned — the claim event is
+        // recorded outside it. Observation only: behavior unchanged.
+        $this->recorder->record(PublishEventData::claim(
+            workspaceId: $video->workspace_id,
+            publishableType: $video::class,
+            publishableId: (int) $video->getKey(),
+            jobId: $jobId,
+            operationId: $eventOperationId,
+            runToken: $runToken,
+        ));
 
         $video->refresh();
         $progress = $video->publish_progress;
@@ -1804,6 +1832,23 @@ class PublishVideoAction
     {
         return $this->hasRunToken($progress)
             && hash_equals((string) $progress['run_token'], $runToken);
+    }
+
+    /**
+     * Correlation operation id for publish events: the persisted progress
+     * operation id (written by prepareProgress) is authoritative once it
+     * exists. Legacy deliveries whose progress never carried one record
+     * nullable correlation columns (OBS-01 empty edge).
+     *
+     * @param  array<string, mixed>|null  $progress
+     */
+    private function eventOperationId(?array $progress): ?string
+    {
+        $persisted = $progress['operation_id'] ?? null;
+
+        return is_string($persisted) && trim($persisted) !== ''
+            ? $persisted
+            : null;
     }
 
     /**

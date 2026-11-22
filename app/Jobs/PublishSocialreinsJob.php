@@ -53,7 +53,10 @@ class PublishSocialreinsJob implements ShouldQueue
 
     public function handle(PublishToSocialreinsAction $action): void
     {
-        $action->handle($this->subject, $this->options);
+        // Publish-event correlation (OBS-01). Null when this job instance was
+        // constructed/handled outside a queue worker (direct tests, sync
+        // dispatch fallbacks) — events stay queryable via operation ids.
+        $action->handle($this->subject, $this->options, $this->job?->uuid());
     }
 
     public function failed(?Throwable $exception): void
