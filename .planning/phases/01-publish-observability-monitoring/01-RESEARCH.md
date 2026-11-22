@@ -676,7 +676,10 @@ D-09's discretion if wanted later.
 | A5 | recharts 3.11.0 mounts cleanly under React 19 in this project's Vite/Inertia setup (peer range confirmed; community edge-reports on some 3.3.x tooltip paths) | Standard Stack | Chart renders blank/broken; CSS-bars fallback exists at zero cost |
 | A6 | Sentry's Laravel SDK auto-captures queue-job exceptions through the shared handler (docs describe handler integration; per-queue specifics not individually verified) | Pattern 3 | Some worker-side exceptions need explicit capture; resolved by a staging `sentry:test` + deliberate test exception before sign-off |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+**Status:** All five questions were resolved at planning time; each carries a `Resolution:`
+marker pointing at the resolving plan. No unresolved open question remains in this document.
 
 1. **What is the video path's effective lease window?**
    - What we know: `PublishPostJob::LEASE_SECONDS = 1020` verified; `PublishVideoJob` defines
@@ -686,6 +689,11 @@ D-09's discretion if wanted later.
      what value.
    - Recommendation: planner adds a read task (`PublishVideoAction` claim path) before the
      watchdog task; put both windows in one config file with margins (Pitfall 5).
+   - Resolution: RESOLVED in plan 01-03 Task 1 — `PublishVideoAction` enforces no expiry
+     constant of its own (verified: zero lease matches in the action), so the effective video
+     window is `PublishVideoJob::OVERLAP_EXPIRES_AFTER_SECONDS` (1020), set alongside the post
+     window in `config/observability.php` `lease_windows` with the 1.5x
+     `stuck_margin_multiplier` (recommendation adopted).
 2. **Where exactly does the claim path observe a lease expiry?**
    - What we know: the claim transaction resets state when
      "The previous publish worker lease expired." (string at `PublishPostAction` ~line 2522)
@@ -693,23 +701,38 @@ D-09's discretion if wanted later.
    - What's unclear: whether video's claim path has the same marker text/branch.
    - Recommendation: emit the lease-expiry event inside `claimPost()`'s expired-lease branch
      (post) and its video counterpart — planner pins both line-level hooks in the plan.
+   - Resolution: RESOLVED in plan 01-01 Task 2 (post half) — the expired-lease branch (the
+     "The previous publish worker lease expired" path, ~line 2522) records a claim event with
+     `payload.lease_expired = true`. The video half is RESOLVED as "no hook exists" (plans
+     01-02/01-03): videos carry no `publish_claimed_at`/`publish_lease_id` columns
+     (posts-only migrations 2026_09_01_140003/140004) and `PublishVideoAction` contains no
+     lease machinery, so lease-expiry events are post-path-only by design and the watchdog's
+     lease-loop condition (D-14 condition 3) is post-scoped accordingly.
 3. **Watchdog behavior when no Telegram bot is connected?**
    - What we know: `QueueTelegramNotificationAction` throws `TelegramNotificationsUnavailable`
      without a connected bot [VERIFIED: app/Actions/Notifications/QueueTelegramNotificationAction.php:58-70].
    - Recommendation: catch and degrade to a `publish`-channel log line + the dashboard counts
      (alerts still visible via Sentry breadcrumb context if desired). No alert loss beyond
      Telegram being unconfigured.
+   - Resolution: RESOLVED in plan 01-03 Task 2 — the recommendation is adopted as locked:
+     `TelegramNotificationsUnavailable` is caught and degraded to a `publish`-channel warning,
+     so the scheduled command never crashes over a missing bot.
 4. **recharts vs. CSS bars for the success-rate chart?**
    - What we know: recharts is React 19 peer-supported but seam-flagged SUS (false-positive
      "too-new"); project currently has zero chart deps; D-17 asks for a "success-rate chart".
    - Recommendation: default to CSS/Tailwind bars (four buckets, no dependency, no checkpoint)
      unless the operator wants axes/tooltips — in which case gate recharts behind
      `checkpoint:human-verify`.
+   - Resolution: RESOLVED in plan 01-05 (with 01-UI-SPEC.md) — the recommendation is adopted:
+     CSS/Tailwind stacked proportion bar, no chart dependency, no checkpoint.
 5. **Sentry project provisioning (human action).**
    - What we know: D-09 uses Sentry SaaS; a DSN requires a human-created org/project.
    - Recommendation: planner inserts an early `checkpoint:human-verify` task — "create Sentry
      project, supply DSN via Railway env `SENTRY_LARAVEL_DSN`" — before OBS-04 tasks; code must
      ship functional with the DSN unset (Pitfall 3) so this does not block the rest of the phase.
+   - Resolution: RESOLVED in plan 01-04 Task 3 — the recommendation is adopted: a blocking
+     `checkpoint:human-verify` task provisions the org/project and sets `SENTRY_LARAVEL_DSN`
+     (Railway app env), while Tasks 1-2 ship the SDK functional and inert with the DSN unset.
 
 ## Environment Availability
 
