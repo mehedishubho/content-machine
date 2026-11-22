@@ -3,11 +3,13 @@
 namespace App\Actions\Postsyncer;
 
 use App\Actions\Socialreins\ContinueSplitOnSocialreinsAction;
+use App\Data\Observability\PublishEventData;
 use App\Data\Postsyncer\RepairPostAccountMappingData;
 use App\Jobs\PublishPostJob;
 use App\Models\Post;
 use App\Models\TelegramPostRequest;
 use App\Models\Workspace;
+use App\Support\Observability\PublishEventRecorder;
 use App\Support\Postsyncer\LegacyPublishProgress;
 use App\Support\Postsyncer\MapPostsyncerAccounts;
 use App\Support\Postsyncer\PostPublishPlanner;
@@ -28,6 +30,11 @@ class PublishPostAction
 {
     public function __construct(
         private readonly PostPublishPlanner $planner,
+        // The publish-event seam (D-06). A concrete default keeps direct
+        // construction sites (jobs resolve via the container; existing tests
+        // construct `new PublishPostAction(new PostPublishPlanner(...))`)
+        // working unchanged — instrumentation must not change call sites.
+        private readonly PublishEventRecorder $recorder = new PublishEventRecorder,
     ) {}
 
     /**
@@ -55,6 +62,7 @@ class PublishPostAction
         ?string $runToken = null,
         ?string $operationId = null,
         ?string $leaseId = null,
+        ?string $jobId = null,
     ): void {
         $post->refresh();
         $originalStatus = $post->status;
@@ -266,13 +274,27 @@ class PublishPostAction
             $progress['state'] = 'succeeded';
             $progress['completed_groups'] = $completedGroups;
             $progress['current'] = null;
-            if (! $this->finalizeSuccess(
+            $finalized = $this->finalizeSuccess(
                 $post,
                 $publishedGroups,
                 $progress,
                 $options,
                 $claimLeaseId,
-            )) {
+            );
+
+            // D-07: recorded AFTER finalizeSuccess()'s transaction returned —
+            // never inside one. Observation only: publish behavior unchanged.
+            if ($finalized) {
+                $this->recorder->record(PublishEventData::finalize(
+                    workspaceId: $post->workspace_id,
+                    publishableType: $post::class,
+                    publishableId: (int) $post->getKey(),
+                    outcome: 'succeeded',
+                    jobId: $jobId,
+                    operationId: $operationId,
+                    runToken: $runToken,
+                ));
+            } else {
                 throw new PostsyncerException(
                     'The publish could not be finalized because its approval or cancellation state changed.'
                 );

@@ -20,10 +20,15 @@ class PublishPostJobTest extends TestCase
         $options = ['when' => '2026-08-26T09:12:00+06:00', 'confirm_ask' => true];
 
         $action = Mockery::mock(PublishPostAction::class);
+        // Trailing nulls are the optional operationId/leaseId/jobId params:
+        // jobId (OBS-01 publish-event correlation) rides along from the job.
         $action->shouldReceive('handle')->once()->with(
             Mockery::on(fn (Post $p) => $p->is($post)),
             $options,
             Mockery::type('string'),
+            null,
+            null,
+            null,
         );
 
         (new PublishPostJob($post, $options))->handle($action);
@@ -43,6 +48,9 @@ class PublishPostJobTest extends TestCase
             Mockery::on(fn (Post $p) => $p->is($post)),
             $options,
             Mockery::type('string'),
+            null,
+            null,
+            null,
         );
 
         $job->handle($action);

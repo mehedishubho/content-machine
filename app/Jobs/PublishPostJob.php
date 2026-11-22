@@ -209,8 +209,13 @@ class PublishPostJob implements ShouldBeUnique, ShouldQueue
         $runToken ??= (string) Str::uuid();
         $this->effectiveRunToken = $runToken;
 
+        // Publish-event correlation (OBS-01). Null when this job instance was
+        // constructed/handled outside a queue worker (direct tests, sync
+        // dispatch fallbacks) — events stay queryable via operation/run ids.
+        $jobId = $this->job?->uuid();
+
         if ($this->operationId === null && $this->leaseId === null) {
-            $action->handle($this->post, $this->options, $runToken);
+            $action->handle($this->post, $this->options, $runToken, jobId: $jobId);
 
             return;
         }
@@ -221,6 +226,7 @@ class PublishPostJob implements ShouldBeUnique, ShouldQueue
             $runToken,
             $this->operationId,
             $this->leaseId,
+            $jobId,
         );
     }
 

@@ -1,5 +1,6 @@
 <?php
 
+use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -110,6 +111,22 @@ return [
                 'stream' => 'php://stderr',
             ],
             'formatter' => env('LOG_STDERR_FORMATTER'),
+            'processors' => [PsrLogMessageProcessor::class],
+        ],
+
+        // Dedicated publish-event channel (D-02): exactly one JSON object per
+        // line to stderr — the forensic publish trail (OBS-01), grep-able in
+        // Railway logs. Written only by PublishEventRecorder (D-06). The
+        // JsonFormatter is hardcoded, not env-selectable: the one-JSON-object-
+        // per-line shape is the channel's contract, not a deployment choice.
+        'publish' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_PUBLISH_LEVEL', 'info'),
+            'handler' => StreamHandler::class,
+            'handler_with' => [
+                'stream' => 'php://stderr',
+            ],
+            'formatter' => JsonFormatter::class,
             'processors' => [PsrLogMessageProcessor::class],
         ],
 
