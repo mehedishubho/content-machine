@@ -18,3 +18,8 @@
   `php -d memory_limit=4G ./vendor/bin/pest` (1603/1606 — only the 3 platform failures
   above). Run long suites on this machine with a raised memory limit.
   status: open
+- Sentry end-to-end delivery unverified — SENTRY_LARAVEL_DSN not provisioned (plan 01-04
+  Task 3 checkpoint deferred by user 2026-11-23). Code shipped inert-by-design (Pitfall 3:
+  SDK silent while the DSN is unset); provisioning steps + verification commands are in
+  01-04-PLAN.md Task 3 and 01-USER-SETUP.md. OBS-04 end-to-end = human follow-up.
+  status: open
