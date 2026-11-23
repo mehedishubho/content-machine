@@ -110,6 +110,20 @@ class ObservabilityPageTest extends TestCase
                 ->where('metrics.recent_outcomes', []));
     }
 
+    public function test_outcome_rows_carry_type_and_null_provider_for_the_meta_line(): void
+    {
+        [, $workspace] = $this->actingAsWorkspaceOwner();
+
+        $post = Post::factory()->for($workspace)->create(['title' => 'Typed row']);
+        $this->finalizeEvent($workspace, $post, 'succeeded');
+
+        $this->get(route('dashboard.observability.index'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('metrics.recent_outcomes.0.type', 'post')
+                ->where('metrics.recent_outcomes.0.provider', null)
+                ->where('metrics.recent_outcomes.0.outcome', 'succeeded'));
+    }
     /**
      * One finalize-stage event row. created_at is not fillable on the
      * append-only model, so the fixture forceFills it; workspace_id is

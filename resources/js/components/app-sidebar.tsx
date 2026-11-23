@@ -1,5 +1,6 @@
 import { Link } from '@inertiajs/react';
 import {
+    Activity,
     BookOpen,
     CalendarDays,
     Clapperboard,
@@ -31,6 +32,7 @@ import {
 } from '@/components/ui/sidebar';
 import { index as calendarIndex } from '@/routes/calendar';
 import { home } from '@/routes/dashboard';
+import { index as observabilityIndex } from '@/routes/dashboard/observability';
 import { index as teamIndex } from '@/routes/dashboard/team';
 import { index as apiTokensIndex } from '@/routes/dashboard/team/api-tokens';
 import {
@@ -56,6 +58,11 @@ const mainNavItems: NavItem[] = [
         title: 'Dashboard',
         href: home(),
         icon: LayoutDashboard,
+    },
+    {
+        title: 'Observability',
+        href: observabilityIndex(),
+        icon: Activity,
     },
     {
         title: 'Scratch Pad',

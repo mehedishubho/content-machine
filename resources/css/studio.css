@@ -3274,3 +3274,214 @@
     min-width: 1.2em;
     font-weight: 700;
 }
+
+/* Observability page (publish success-rate reporting). */
+
+.studio-page .obs-tabbar {
+    margin: 0 2px 20px;
+}
+
+.studio-page .obs-section-h {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 2px 10px;
+}
+
+.studio-page .stat.s-succeeded .n {
+    color: var(--good);
+}
+
+.studio-page .stat.s-failed .n {
+    color: var(--bad);
+}
+
+.studio-page .stat.s-warn .n {
+    color: var(--warn);
+}
+
+.studio-page .obs-metrics {
+    transition: opacity 160ms ease;
+}
+
+/* Period-switch partial reload: dim the metrics region, keep layout. */
+.studio-page .obs-metrics.is-reloading {
+    opacity: 0.6;
+}
+
+.studio-page .obs-rate {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 0 2px 26px;
+}
+
+.studio-page .obs-rate-figure {
+    flex: none;
+    min-width: 84px;
+}
+
+.studio-page .obs-rate-n {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.1;
+    color: var(--good);
+}
+
+/* Zero attempts: the em dash figure stays neutral ink, never 0%. */
+.studio-page .obs-rate-n.is-empty {
+    color: var(--ink-faint);
+}
+
+.studio-page .obs-bar {
+    flex: 1;
+    height: 12px;
+    border-radius: 999px;
+    background: var(--bg3);
+    overflow: hidden;
+    display: flex;
+}
+
+.studio-page .obs-bar-seg {
+    height: 100%;
+}
+
+.studio-page .obs-bar-good {
+    background: var(--good);
+}
+
+.studio-page .obs-bar-bad {
+    background: var(--bad);
+}
+
+.studio-page .obs-empty {
+    padding: 32px 20px;
+    text-align: center;
+    border: 1px dashed var(--line-strong);
+    border-radius: 16px;
+    background: var(--bg2);
+    margin: 0 2px;
+}
+
+.studio-page .obs-empty h3 {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 6px;
+    color: var(--ink);
+}
+
+.studio-page .obs-empty p {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--ink-faint);
+}
+
+/* Outcome rows reuse the dash-upcoming list; rows are not links. */
+.studio-page .obs-outcome {
+    display: grid;
+    grid-template-columns: minmax(0, 88px) minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: start;
+    padding: 12px 16px;
+}
+
+@media (max-width: 640px) {
+    .studio-page .obs-outcome {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+}
+
+.studio-page .obs-outcome-id {
+    font-family: var(--font-cue);
+    font-size: 12px;
+    color: var(--ink-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.studio-page .obs-outcome-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.studio-page .obs-outcome-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.studio-page .obs-outcome-meta {
+    font-family: var(--font-cue);
+    font-size: 12px;
+    color: var(--ink-faint);
+}
+
+.studio-page .obs-outcome-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.studio-page .obs-outcome-when {
+    font-size: 13px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+}
+
+.studio-page .obs-cap {
+    font-family: var(--font-cue);
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin: 8px 2px 0;
+}
+
+.studio-page .obs-error {
+    margin: 0 2px 18px;
+    border-color: color-mix(in srgb, var(--bad) 32%, transparent);
+    background: color-mix(in srgb, var(--bad) 6%, var(--bg2));
+}
+
+.studio-page .obs-error .obs-error-t {
+    color: var(--bad);
+}
+
+.studio-page .obs-error .obs-retry {
+    margin-top: 8px;
+}
+
+/* Outcome pills follow the existing .pill.st-* color-mix recipe;
+   labels always pair with the color (never color alone). */
+
+.studio-page .pill.st-succeeded {
+    color: var(--good);
+    background: color-mix(in srgb, var(--good) 14%, transparent);
+    border-color: color-mix(in srgb, var(--good) 34%, transparent);
+}
+
+.studio-page .pill.st-failed {
+    color: var(--bad);
+    background: color-mix(in srgb, var(--bad) 12%, transparent);
+    border-color: color-mix(in srgb, var(--bad) 32%, transparent);
+}
+
+.studio-page .pill.st-retrying {
+    color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 13%, transparent);
+    border-color: color-mix(in srgb, var(--warn) 32%, transparent);
+}
+
+.studio-page .pill.st-lease {
+    color: var(--info);
+    background: color-mix(in srgb, var(--info) 13%, transparent);
+    border-color: color-mix(in srgb, var(--info) 32%, transparent);
+}
