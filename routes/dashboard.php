@@ -3,6 +3,7 @@
 use App\Http\Controllers\ApiTokens\WorkspaceApiTokensController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Ideas\IdeasController;
+use App\Http\Controllers\ObservabilityController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\TeamController;
@@ -17,6 +18,11 @@ Route::middleware(['auth', 'verified', SetCurrentWorkspace::class])
         // Login, register, and email-verify still land here. Other pages
         // keep "Dashboard" as their root breadcrumb.
         Route::get('/', [DashboardController::class, 'home'])->name('home');
+
+        // Publish observability (D-08: dashboard-only surface). The period
+        // query param is validated server-side by the FormRequest (T-01-10).
+        Route::get('observability', [ObservabilityController::class, 'index'])
+            ->name('observability.index');
 
         Route::get('team', [TeamController::class, 'index'])->name('team.index');
         Route::post('team/invitations', [TeamController::class, 'storeInvitation'])->name('team.invitations.store');
