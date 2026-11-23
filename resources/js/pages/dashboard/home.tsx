@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { index as calendarIndex } from '@/routes/calendar';
 import { home } from '@/routes/dashboard';
+import { index as observabilityIndex } from '@/routes/dashboard/observability';
 import { index as postsIndex } from '@/routes/posts';
 import { index as scratchpadIndex } from '@/routes/scratchpad';
 import { index as videosIndex } from '@/routes/videos';
@@ -14,6 +15,12 @@ type UpcomingItem = {
     at: string;
     date: string;
     href: string;
+};
+
+type PublishHealth = {
+    rate: number | null;
+    failed: number;
+    retried: number;
 };
 
 type PageProps = {
@@ -38,6 +45,7 @@ type PageProps = {
     };
     upcoming: UpcomingItem[];
     timezone: string;
+    publish_health: PublishHealth;
 };
 
 function timeLabel(at: string, timezone: string): string {
@@ -63,7 +71,12 @@ export default function DashboardHome({
     posts,
     upcoming,
     timezone,
+    publish_health: publishHealth,
 }: PageProps) {
+    // Zero attempts render the em dash in faint ink — never 0%, never NaN%.
+    const rateFigure =
+        publishHealth.rate === null ? '—' : `${publishHealth.rate}%`;
+
     return (
         <>
             <Head title="Dashboard" />
@@ -77,6 +90,58 @@ export default function DashboardHome({
                 </p>
 
                 <div className="dash-grid">
+                    <section className="dash-card">
+                        <Link
+                            href={observabilityIndex()}
+                            className="dash-card-h"
+                        >
+                            Publish health
+                        </Link>
+                        <div className="stats">
+                            <Link
+                                href={observabilityIndex()}
+                                className={
+                                    publishHealth.rate === null
+                                        ? 'stat'
+                                        : 'stat s-succeeded'
+                                }
+                            >
+                                <div
+                                    className={
+                                        publishHealth.rate === null
+                                            ? 'n is-empty'
+                                            : 'n'
+                                    }
+                                >
+                                    {rateFigure}
+                                </div>
+                                <div className="k">Success rate · 7d</div>
+                            </Link>
+                            <Link
+                                href={observabilityIndex()}
+                                className={
+                                    publishHealth.failed > 0
+                                        ? 'stat s-failed'
+                                        : 'stat'
+                                }
+                            >
+                                <div className="n">{publishHealth.failed}</div>
+                                <div className="k">Failed · 7d</div>
+                            </Link>
+                            <Link
+                                href={observabilityIndex()}
+                                className={
+                                    publishHealth.retried > 0
+                                        ? 'stat s-warn'
+                                        : 'stat'
+                                }
+                            >
+                                <div className="n">{publishHealth.retried}</div>
+                                <div className="k">Retried · 7d</div>
+                            </Link>
+                        </div>
+                    </section>
+
                     <section className="dash-card">
                         <Link href={scratchpadIndex()} className="dash-card-h">
                             Scratch Pad

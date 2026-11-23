@@ -1576,7 +1576,8 @@
 
 .studio-page .dash-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    /* Four cards flow (Publish health joins home, D-17). */
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 16px;
     margin: 0 2px 28px;
 }
@@ -3484,4 +3485,9 @@
     color: var(--info);
     background: color-mix(in srgb, var(--info) 13%, transparent);
     border-color: color-mix(in srgb, var(--info) 32%, transparent);
+}
+
+.studio-page .stat .n.is-empty {
+    /* Zero-attempt em dash on the home card (D-17). */
+    color: var(--ink-faint);
 }

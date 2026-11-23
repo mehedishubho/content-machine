@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Idea;
 use App\Models\Post;
+use App\Models\PublishEvent;
 use App\Models\ScratchpadEntry;
 use App\Models\User;
 use App\Models\Video;
@@ -55,5 +56,55 @@ class DashboardTest extends TestCase
                 ->where('videos.total', 1)
                 ->where('posts.draft', 1)
                 ->where('upcoming', []));
+    }
+
+    public function test_the_home_page_carries_the_publish_health_figures(): void
+    {
+        [, $workspace] = $this->actingAsWorkspaceOwner();
+
+        $succeededPost = Post::factory()->for($workspace)->create();
+        $failedPost = Post::factory()->for($workspace)->create();
+        $this->finalizeEvent($workspace, $succeededPost, 'succeeded');
+        $this->finalizeEvent($workspace, $failedPost, 'failed');
+
+        $this->get(route('dashboard.home'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('publish_health.rate', 50)
+                ->where('publish_health.failed', 1)
+                ->where('publish_health.retried', 0));
+    }
+
+    public function test_a_zero_event_workspace_gets_a_null_publish_health_rate(): void
+    {
+        $this->actingAsWorkspaceOwner();
+
+        $this->get(route('dashboard.home'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('publish_health.rate', null)
+                ->where('publish_health.failed', 0)
+                ->where('publish_health.retried', 0));
+    }
+
+    /**
+     * One finalize-stage event row. created_at is not fillable on the
+     * append-only model, so the fixture forceFills it.
+     */
+    private function finalizeEvent(
+        Workspace $workspace,
+        Post $publishable,
+        string $outcome,
+    ): PublishEvent {
+        $event = new PublishEvent([
+            'workspace_id' => $workspace->id,
+            'publishable_type' => $publishable::class,
+            'publishable_id' => (int) $publishable->getKey(),
+            'stage' => 'finalize',
+            'payload' => ['outcome' => $outcome],
+        ]);
+        $event->forceFill(['created_at' => now()])->save();
+
+        return $event;
     }
 }
