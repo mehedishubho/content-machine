@@ -52,7 +52,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A publish stuck in queued/running past its lease window is detected and alerts the operator automatically — no silent stuck posts
   3. The dashboard shows publish success rate per period (items successfully published via PostSyncer/SocialReins) with failure and retry/lease-expiry counts alongside
   4. Publish-path exceptions reach an error-tracking service with workspace and content context attached
-**Plans**: 3/5 plans executed
+**Plans**: 5/5 plans executed
 
 Plans:
 **Wave 1**
@@ -61,10 +61,10 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 01-02-PLAN.md — Video + SocialReins path instrumentation and provider HTTP outcome events (OBS-01, OBS-05)
 - [x] 01-03-PLAN.md — Stuck-publish watchdog with Telegram alerting and 90-day retention prune (OBS-02, OBS-05)
-- [ ] 01-04-PLAN.md — Sentry error tracking with publish correlation context (OBS-04)
+- [x] 01-04-PLAN.md — Sentry error tracking with publish correlation context (OBS-04)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 01-05-PLAN.md — Observability dashboard: success-rate page + Publish health home card (OBS-03, OBS-05)
+- [x] 01-05-PLAN.md — Observability dashboard: success-rate page + Publish health home card (OBS-03, OBS-05)
 
 **UI hint**: yes
 
@@ -197,7 +197,7 @@ publishes are observable from day one; 10 needs 6+7+8(+9); 11 needs 8+9.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Publish Observability & Monitoring | 4/5 | In Progress | - |
+| 1. Publish Observability & Monitoring | 5/5 | In Progress | - |
 | 2. Publish Path Decomposition | 0/TBD | Not started | - |
 | 3. Publish Progress & Throughput | 0/TBD | Not started | - |
 | 4. Routing & Multi-Tenancy Guardrails | 0/TBD | Not started | - |
