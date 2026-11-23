@@ -1,0 +1,68 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": null,
+  "phases": [
+    {
+      "number": "1",
+      "name": "Publish Observability & Monitoring",
+      "status": "in_progress"
+    },
+    {
+      "number": "2",
+      "name": "Publish Path Decomposition",
+      "status": "pending"
+    },
+    {
+      "number": "3",
+      "name": "Publish Progress & Throughput",
+      "status": "pending"
+    },
+    {
+      "number": "4",
+      "name": "Routing & Multi-Tenancy Guardrails",
+      "status": "pending"
+    },
+    {
+      "number": "5",
+      "name": "Workspace API Completeness",
+      "status": "pending"
+    },
+    {
+      "number": "6",
+      "name": "Recurring Automation Engine",
+      "status": "pending"
+    },
+    {
+      "number": "7",
+      "name": "Data-Source Connectors",
+      "status": "pending"
+    },
+    {
+      "number": "8",
+      "name": "Branded Graphic Generation",
+      "status": "pending"
+    },
+    {
+      "number": "9",
+      "name": "News Portal Ingestion",
+      "status": "pending"
+    },
+    {
+      "number": "10",
+      "name": "Daily Category Rollout",
+      "status": "pending"
+    },
+    {
+      "number": "11",
+      "name": "Shorts Video Pipeline",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step (verify)",
+    "reason": "Phase 1 of 11 · 0% · ready to verify"
+  },
+  "updated_at": "2026-11-23T11:57:27.509Z"
+}

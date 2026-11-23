@@ -1,0 +1,37 @@
+{
+  "phase": 1,
+  "phase_name": "Publish Observability & Monitoring",
+  "timestamp": "2026-11-22T00:00:00Z",
+  "areas_completed": ["Event capture & storage", "Error-tracking service", "Watchdog alert channel"],
+  "areas_remaining": ["Success-rate dashboard"],
+  "decisions": {
+    "Watchdog alert channel": [
+      {"question": "How does a stuck-publish alert reach you?", "answer": "Telegram via the existing bot/notification infrastructure", "options_presented": ["Telegram", "Email", "Sentry + dashboard only"]},
+      {"question": "How does the watchdog run?", "answer": "Scheduled command (scheduler cadence, same pattern as existing dispatch/recovery commands)", "options_presented": ["Scheduled command", "Self-rescheduling job"]},
+      {"question": "Which conditions alert (vs just dashboard-visible)?", "answer": "Stuck past lease window + exhausted-retries permanent failure + repeated lease expiries (retry loop)", "options_presented": ["Stuck + failed + retry-loop", "Stuck only"]},
+      {"question": "How are repeat alerts handled while a publish stays stuck?", "answer": "Once per content item per day while the condition holds", "options_presented": ["Once per item/day", "Every scan"]}
+    ],
+    "Error-tracking service": [
+      {"question": "Which error-tracking service receives publish-path exceptions?", "answer": "Sentry SaaS (free tier, sentry/sentry-laravel SDK, DSN in app env — runtime credential, not ADR-0002 infra token)", "options_presented": ["Sentry SaaS", "GlitchTip self-host", "Defer to a later phase"]},
+      {"question": "What context attaches to reported exceptions?", "answer": "Same IDs as logs — workspace id, content id, job id, operation/run token, 1:1 with the publish log channel", "options_presented": ["Same IDs as logs", "Workspace + content only"]},
+      {"question": "What reports to the error tracker in this phase?", "answer": "Publish path only — publish Actions, provider clients, publish jobs, watchdog", "options_presented": ["Publish path only", "Whole app"]}
+    ],
+    "Event capture & storage": [
+      {"question": "Where do publish events (claim, checkpoint, retry, finalize) live?", "answer": "DB table + log channel", "options_presented": ["DB table + log channel", "Log channel only", "DB table only"]},
+      {"question": "How should the structured log channel emit?", "answer": "Dedicated JSON channel (one JSON object per line to stderr, Railway-ingested)", "options_presented": ["Dedicated JSON channel", "Default channel + context"]},
+      {"question": "If we add a publish_events table, how long do rows live?", "answer": "Prune after 90 days via scheduled command", "options_presented": ["Prune after 90 days", "Prune after 30 days", "Keep forever"]},
+      {"question": "What should be instrumented in v1?", "answer": "Lifecycle + provider HTTP (claim/checkpoint/retry/finalize plus 429 waits, timeouts, 5xx in the clients)", "options_presented": ["Lifecycle + provider HTTP", "Lifecycle stages only"]},
+      {"question": "One publish_events table for posts and videos, or separate tables?", "answer": "One morph table (publishable morph, workspace_id via BelongsToWorkspace, job id, stage, operation/run token, payload JSON)", "options_presented": ["One morph table", "Separate per type"]},
+      {"question": "How do events get written from the publish path?", "answer": "Recorder class — single PublishEventRecorder support class writes DB row + emits log line together", "options_presented": ["Recorder class", "Model observers"]},
+      {"question": "Should event rows share the checkpoint transaction?", "answer": "After commit, logs always — DB rows best-effort post-commit; log channel fires regardless", "options_presented": ["After commit, logs always", "Inside the transaction"]},
+      {"question": "Where are publish events visible?", "answer": "Dashboard only; no new API v1 surface in this phase", "options_presented": ["Dashboard only", "Dashboard + API v1"]}
+    ]
+  },
+  "deferred_ideas": [],
+  "canonical_refs": [
+    ".planning/codebase/CONCERNS.md",
+    ".planning/codebase/ARCHITECTURE.md",
+    ".planning/codebase/INTEGRATIONS.md",
+    "CLAUDE.md"
+  ]
+}
