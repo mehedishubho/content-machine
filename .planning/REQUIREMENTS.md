@@ -14,7 +14,7 @@ describe work still to do on the brownfield pipeline, not features to re-impleme
 - [x] **OBS-01**: A failed or partially-published item can be diagnosed from structured logs alone: publish-path code logs at claim, checkpoint, retry, and finalize points with job id, content id, operation/run token, and stage
 - [x] **OBS-02**: A publish left in queued/running past its lease window is detected automatically and alerts the operator (stuck-publish watchdog) — no silent stuck posts
 - [ ] **OBS-03**: The dashboard shows publish success rate per period: counts of content items successfully published via PostSyncer/SocialReins, with failures alongside
-- [ ] **OBS-04**: Publish-path exceptions reach an error-tracking service with workspace and content context attached
+- [x] **OBS-04**: Publish-path exceptions reach an error-tracking service with workspace and content context attached
 - [ ] **OBS-05**: Retry and lease-expiry counts on the publish path are tracked and reported alongside the success rate
 
 ### Publish Architecture
@@ -126,7 +126,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OBS-01 | Phase 1 | Complete |
 | OBS-02 | Phase 1 | Complete |
 | OBS-03 | Phase 1 | Pending |
-| OBS-04 | Phase 1 | Pending |
+| OBS-04 | Phase 1 | Complete |
 | OBS-05 | Phase 1 | Pending |
 | ARCH-01 | Phase 2 | Pending |
 | ARCH-02 | Phase 2 | Pending |

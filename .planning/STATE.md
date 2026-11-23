@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Publish Observability & Monitoring
 status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-11-22T21:00:54.339Z"
-last_activity: 2026-11-22
-last_activity_desc: Phase 01 execution started
-state_head: 4783aa7436c23c56dbc016efcd8b648c2932fe79
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-11-23T06:55:00.000Z"
+last_activity: 2026-11-23
+last_activity_desc: Phase 01 plan 01-04 completed (Sentry inert install + publish correlation context; DSN provisioning deferred)
+state_head: 2add3af0ff2f8f8c3c9d17456799c797ad59931a
 progress:
   total_phases: 11
   completed_phases: 0
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -41,9 +41,9 @@ See: .planning/PROJECT.md (updated 2026-11-22)
 ## Current Position
 
 Phase: 01 (Publish Observability & Monitoring) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
-Last activity: 2026-11-22 — Phase 01 execution started
+Last activity: 2026-11-23 — Completed 01-04 (Sentry SDK inert install + publish correlation context; DSN provisioning deferred)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -72,6 +72,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P01 | 61 min | 3 tasks | 11 files |
 | Phase 01 P02 | 326 min | 3 tasks | 13 files |
 | Phase 01 P03 | 31 min | 3 tasks | 7 files |
+| Phase 01 P04 | 535 min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Watchdog alert recipient is the workspace team owner; fixtures mirror CreateTeamAction's team_user attach because factories skip it and the notification action checks membership before the bot check — QueueTelegramNotificationAction order: membership, then config, then link
 - [Phase 01]: Exhausted-retry condition resolves the newest finalize event per failed content; a failed state column alone can predate a later successful run — Run-level truth for the permanent-failure marker (D-14 condition 2)
 - [Phase 01]: Retention prune deletes strictly created_at < cutoff in bounded 500-row ctid batches; exact-90d boundary row survives (strict <, frozen-clock proven) — D-03 with PostgreSQL bloat control and no raw destructive commands
+- [Phase 01]: Sentry DSN provisioning deferred by user 2026-11-23 — SDK ships inert-by-design (Pitfall 3, silent while SENTRY_LARAVEL_DSN unset); OBS-04 end-to-end delivery is an open follow-up tracked in deferred-items.md + 01-USER-SETUP.md (sentry:test + staging probe remain to run)
 
 ### Pending Todos
 
@@ -111,6 +113,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-22T21:00:54.317Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-11-23T06:55:00.000Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None

@@ -197,7 +197,7 @@ publishes are observable from day one; 10 needs 6+7+8(+9); 11 needs 8+9.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Publish Observability & Monitoring | 3/5 | In Progress | - |
+| 1. Publish Observability & Monitoring | 4/5 | In Progress | - |
 | 2. Publish Path Decomposition | 0/TBD | Not started | - |
 | 3. Publish Progress & Throughput | 0/TBD | Not started | - |
 | 4. Routing & Multi-Tenancy Guardrails | 0/TBD | Not started | - |

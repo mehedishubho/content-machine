@@ -176,6 +176,14 @@ None beyond the Task 3 deferral above. (The 3 Windows-platform pest failures pre
 ## Next Phase Readiness
 Ready for 01-05 (publish success-rate reporting — the last plan of Phase 01). The recorder seam, `publish_events` table, and correlation ids from 01-01/01-04 are the shared surface; no blockers. Note: OBS-04 end-to-end verification remains open (deferred-items.md) and will surface at audit/milestone gates until the DSN is provisioned and verified.
 
+## Self-Check: PASSED
+
+- All key files verified present on disk (SUMMARY, USER-SETUP, both deferred-items files, the four created code files)
+- Commits verified as ancestors of HEAD: `f76664a` (Task 1), `2add3af` (Task 2), `4a2b6c9` (docs close-out)
+- Commits measured from ledger (`gsd-plan-head-before-01-04` = a037c0c): **3** production + docs commits at self-check time
+- Plan-level verification re-run 2026-11-23 in DSN-unset scope: composer.lock 4.31.0 + validate pass, sanity suites 12 passed / 54 assertions, pint pass, phpstan 0 errors, all grep gates clean
+- Known non-runnable check: OBS-04 end-to-end delivery (sentry:test + staging probe) — deferred by user, tracked open
+
 ---
 *Phase: 01-publish-observability-monitoring*
 *Completed: 2026-11-23*
