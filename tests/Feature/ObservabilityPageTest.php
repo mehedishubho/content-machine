@@ -124,6 +124,7 @@ class ObservabilityPageTest extends TestCase
                 ->where('metrics.recent_outcomes.0.provider', null)
                 ->where('metrics.recent_outcomes.0.outcome', 'succeeded'));
     }
+
     /**
      * One finalize-stage event row. created_at is not fillable on the
      * append-only model, so the fixture forceFills it; workspace_id is
