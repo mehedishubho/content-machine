@@ -66,6 +66,22 @@ class PublishPostActionInstrumentationTest extends TestCase
         ];
     }
 
+    /**
+     * OBS-01: neither the publish-channel log contexts nor the publish_events
+     * rows may ever serialize the workspace's PostSyncer API key.
+     */
+    private function assertNoWorkspaceApiKeyInAnyEvent(): void
+    {
+        $this->assertStringNotContainsString(
+            'test-api-key',
+            (string) json_encode($this->publishEventContexts()),
+        );
+        $this->assertStringNotContainsString(
+            'test-api-key',
+            (string) json_encode(PublishEvent::query()->orderBy('id')->get()->toArray()),
+        );
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -133,6 +149,72 @@ class PublishPostActionInstrumentationTest extends TestCase
     }
 
     /**
+     * OBS-01 / ASVS V7: every payload key on the post publish path stays
+     * inside the stage whitelist (ids and small status fields only), and no
+     * event — log context or DB row — ever carries the workspace's
+     * PostSyncer API key.
+     */
+    public function test_event_payloads_use_whitelisted_keys_only_and_never_carry_the_workspace_api_key(): void
+    {
+        Http::fake([
+            'postsyncer.com/api/v1/posts' => Http::response(['id' => 42, 'status' => 'published'], 201),
+            'postsyncer.com/api/v1/posts/42' => Http::response([
+                'id' => 42,
+                'workspace_id' => 15211,
+                'content' => [['text' => 'Caption', 'media' => []]],
+                'platforms' => [['platform' => 'facebook', 'account_id' => 100, 'settings' => [
+                    'post_type' => 'POST', 'caption' => 'Caption',
+                ]]],
+                'status' => 'PUBLISHED',
+            ], 200),
+        ]);
+
+        $workspace = Workspace::factory()->create();
+        $this->configureWorkspace($workspace);
+        $post = Post::factory()->for($workspace)->create($this->postAttributes());
+
+        $this->action->handle($post, ['confirm_ask' => false], runToken: 'run-token-42', jobId: 'job-42', attempt: 1);
+
+        $contexts = $this->publishEventContexts();
+        $rows = PublishEvent::query()->orderBy('id')->get();
+        $this->assertGreaterThan(0, count($contexts));
+        $this->assertCount(count($contexts), $rows);
+
+        $allowedKeysByStage = [
+            'claim' => ['lease_expired'],
+            'checkpoint' => ['completed', 'group', 'phase'],
+            'retry' => ['attempt', 'reason'],
+            'finalize' => ['outcome'],
+        ];
+
+        $observed = [];
+        foreach ($contexts as $context) {
+            $observed[] = ['stage' => (string) $context['stage'], 'payload' => $context['payload']];
+        }
+        foreach ($rows as $row) {
+            $observed[] = ['stage' => (string) $row->stage, 'payload' => $row->payload];
+        }
+
+        foreach ($observed as $event) {
+            $this->assertArrayHasKey($event['stage'], $allowedKeysByStage);
+
+            $keys = array_keys($event['payload']);
+            sort($keys);
+
+            if ($event['stage'] === 'finalize') {
+                $this->assertSame(['outcome'], $keys);
+            } elseif ($event['stage'] === 'claim') {
+                $this->assertTrue($keys === [] || $keys === ['lease_expired']);
+            } else {
+                $this->assertSame([], array_diff($keys, $allowedKeysByStage[$event['stage']]));
+            }
+        }
+
+        $this->assertStringNotContainsString('test-api-key', (string) json_encode($contexts));
+        $this->assertStringNotContainsString('test-api-key', (string) json_encode($rows->toArray()));
+    }
+
+    /**
      * (b) A deterministic provider rejection (422) is kept in the record and
      * emits finalize(failed) — not a retry.
      */
@@ -161,6 +243,8 @@ class PublishPostActionInstrumentationTest extends TestCase
         $contexts = $this->publishEventContexts();
         $finalize = end($contexts);
         $this->assertSame('failed', $finalize['payload']['outcome']);
+
+        $this->assertNoWorkspaceApiKeyInAnyEvent();
     }
 
     /**
@@ -200,6 +284,8 @@ class PublishPostActionInstrumentationTest extends TestCase
         $this->assertSame('PostsyncerException', $retry['payload']['reason']);
         $this->assertSame(2, $retry['payload']['attempt']);
         $this->assertSame('job-503', $retry['job_id']);
+
+        $this->assertNoWorkspaceApiKeyInAnyEvent();
     }
 
     /**
@@ -247,6 +333,8 @@ class PublishPostActionInstrumentationTest extends TestCase
         $this->assertTrue($claim['payload']['lease_expired']);
         $this->assertSame('run-exp', $claim['run_token']);
         $this->assertSame($workspace->id, $claim['workspace_id']);
+
+        $this->assertNoWorkspaceApiKeyInAnyEvent();
     }
 
     /**

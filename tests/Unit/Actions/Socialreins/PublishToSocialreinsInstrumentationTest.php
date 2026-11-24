@@ -118,6 +118,77 @@ class PublishToSocialreinsInstrumentationTest extends TestCase
     }
 
     /**
+     * OBS-01 / ASVS V7: every payload key on the SocialReins publish path
+     * stays inside the stage vocabulary whitelist (ids and small status
+     * fields only), and no event — log context or DB row — ever carries the
+     * workspace's webhook secret or set token.
+     */
+    public function test_event_payloads_use_whitelisted_keys_only_and_never_carry_the_webhook_secret_or_set_token(): void
+    {
+        $this->fakeHttp([
+            self::URL => Http::response([
+                'group_id' => 'aaaaaaaa-0000-4000-8000-000000000001',
+                'expected_targets' => 1,
+                'posts' => [[
+                    'id' => 'bbbbbbbb-0000-4000-8000-000000000000',
+                    'platform' => 'facebook',
+                    'status' => 'scheduled',
+                    'error' => null,
+                    'targets' => [],
+                ]],
+                'skipped' => [],
+            ], 201),
+        ]);
+
+        $workspace = $this->workspace();
+        $post = $this->makePost($workspace);
+
+        $this->action->handle($post, [], 'job-sr-sec');
+
+        $contexts = $this->publishEventContexts();
+        $rows = PublishEvent::query()->orderBy('id')->get();
+        $this->assertGreaterThan(0, count($contexts));
+        $this->assertCount(count($contexts), $rows);
+
+        $allowedKeysByStage = [
+            'claim' => ['lease_expired'],
+            'checkpoint' => ['completed', 'group', 'phase'],
+            'retry' => ['attempt', 'reason'],
+            'finalize' => ['outcome'],
+            'provider_http' => ['path', 'provider', 'status', 'waited_seconds'],
+        ];
+
+        $observed = [];
+        foreach ($contexts as $context) {
+            $observed[] = ['stage' => (string) $context['stage'], 'payload' => $context['payload']];
+        }
+        foreach ($rows as $row) {
+            $observed[] = ['stage' => (string) $row->stage, 'payload' => $row->payload];
+        }
+
+        foreach ($observed as $event) {
+            $this->assertArrayHasKey($event['stage'], $allowedKeysByStage);
+
+            $keys = array_keys($event['payload']);
+            sort($keys);
+
+            if (in_array($event['stage'], ['finalize', 'provider_http'], true)) {
+                if ($event['stage'] === 'provider_http') {
+                    $this->assertSame(['path', 'provider', 'status', 'waited_seconds'], $keys);
+                } else {
+                    $this->assertSame(['outcome'], $keys);
+                }
+            } else {
+                $this->assertSame([], array_diff($keys, $allowedKeysByStage[$event['stage']]));
+            }
+        }
+
+        $serialized = (string) json_encode($contexts).(string) json_encode($rows->toArray());
+        $this->assertStringNotContainsString('whsec_test', $serialized);
+        $this->assertStringNotContainsString('sr_set_live_english', $serialized);
+    }
+
+    /**
      * A failed SocialReins run (brain 500, answer lost) emits finalize(failed)
      * once the subject settles to failed, with no confirmed checkpoint.
      */

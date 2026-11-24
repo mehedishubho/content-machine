@@ -88,6 +88,33 @@ class DashboardTest extends TestCase
     }
 
     /**
+     * OBS-03 / T-01-09: the home "Publish health" card only counts the
+     * acting owner's workspace — a second workspace's successes never
+     * inflate the rate or deflate the failure count.
+     */
+    public function test_the_home_publish_health_card_ignores_another_workspaces_events(): void
+    {
+        [, $workspace] = $this->actingAsWorkspaceOwner();
+
+        $otherWorkspace = Workspace::factory()->create();
+        for ($i = 0; $i < 3; $i++) {
+            $otherPost = Post::factory()->for($otherWorkspace)->create(['title' => 'Other '.$i]);
+            $this->finalizeEvent($otherWorkspace, $otherPost, 'succeeded');
+        }
+
+        $succeededPost = Post::factory()->for($workspace)->create();
+        $failedPost = Post::factory()->for($workspace)->create();
+        $this->finalizeEvent($workspace, $succeededPost, 'succeeded');
+        $this->finalizeEvent($workspace, $failedPost, 'failed');
+
+        $this->get(route('dashboard.home'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('publish_health.rate', 50)
+                ->where('publish_health.failed', 1));
+    }
+
+    /**
      * One finalize-stage event row. created_at is not fillable on the
      * append-only model, so the fixture forceFills it.
      */

@@ -49,6 +49,27 @@ class SocialreinsClientInstrumentationTest extends TestCase
         );
     }
 
+    /**
+     * OBS-01 / ASVS V7: every provider_http event — log context and DB row —
+     * carries exactly status/path/provider/waited_seconds, never the set
+     * token nor any faked response body text.
+     *
+     * @param  list<array<string, mixed>>  $events
+     */
+    private function assertProviderHttpPayloadIsWhitelisted(array $events, string $responseBody): void
+    {
+        $rows = PublishEvent::query()->orderBy('id')->get();
+        $serialized = (string) json_encode($events).(string) json_encode($rows->toArray());
+        $this->assertStringNotContainsString('sr_set_live_english', $serialized);
+        $this->assertStringNotContainsString($responseBody, $serialized);
+
+        foreach ($events as $event) {
+            $keys = array_keys($event['payload']);
+            sort($keys);
+            $this->assertSame(['path', 'provider', 'status', 'waited_seconds'], $keys);
+        }
+    }
+
     public function test_a_5xx_response_emits_a_provider_http_event_with_the_actual_status(): void
     {
         $workspace = Workspace::factory()->create();
@@ -72,6 +93,8 @@ class SocialreinsClientInstrumentationTest extends TestCase
         $this->assertSame('socialreins', $event['provider']);
         $this->assertSame($workspace->id, $event['workspace_id']);
         $this->assertSame(1, PublishEvent::query()->count());
+
+        $this->assertProviderHttpPayloadIsWhitelisted([$event], 'internal');
     }
 
     public function test_a_connection_timeout_emits_a_provider_http_event_with_status_zero(): void
@@ -94,6 +117,8 @@ class SocialreinsClientInstrumentationTest extends TestCase
         $this->assertSame(0, $event['payload']['status']);
         $this->assertNull($event['payload']['waited_seconds']);
         $this->assertSame(1, PublishEvent::query()->count());
+
+        $this->assertProviderHttpPayloadIsWhitelisted([$event], 'cURL error 28');
     }
 
     public function test_a_client_without_a_recorder_emits_no_events(): void

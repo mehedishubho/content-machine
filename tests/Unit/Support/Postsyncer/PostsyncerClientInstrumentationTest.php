@@ -48,6 +48,27 @@ class PostsyncerClientInstrumentationTest extends TestCase
     }
 
     /**
+     * OBS-01 / ASVS V7: every provider_http event — log context and DB row —
+     * carries exactly status/path/provider/waited_seconds, never the API key
+     * nor any faked response body text.
+     *
+     * @param  list<array<string, mixed>>  $events
+     */
+    private function assertProviderHttpPayloadIsWhitelisted(array $events, string $responseBody): void
+    {
+        $rows = PublishEvent::query()->orderBy('id')->get();
+        $serialized = (string) json_encode($events).(string) json_encode($rows->toArray());
+        $this->assertStringNotContainsString('test-api-key', $serialized);
+        $this->assertStringNotContainsString($responseBody, $serialized);
+
+        foreach ($events as $event) {
+            $keys = array_keys($event['payload']);
+            sort($keys);
+            $this->assertSame(['path', 'provider', 'status', 'waited_seconds'], $keys);
+        }
+    }
+
+    /**
      * A throttled request emits the provider_http wait event with the backoff
      * waited seconds, plus the raw 429 outcome event, before the request is
      * resent — behavior unchanged (same exception types, budget math, retry
@@ -86,6 +107,8 @@ class PostsyncerClientInstrumentationTest extends TestCase
         $this->assertNull($events[1]['publishable_id']);
 
         $this->assertSame(2, PublishEvent::query()->where('stage', 'provider_http')->count());
+
+        $this->assertProviderHttpPayloadIsWhitelisted($events, 'Too Many Attempts.');
     }
 
     /**
@@ -112,6 +135,8 @@ class PostsyncerClientInstrumentationTest extends TestCase
         $this->assertSame(500, $event['payload']['status']);
         $this->assertNull($event['payload']['waited_seconds']);
         $this->assertSame('/workspaces', $event['payload']['path']);
+
+        $this->assertProviderHttpPayloadIsWhitelisted([$event], 'boom');
     }
 
     /**
@@ -138,6 +163,8 @@ class PostsyncerClientInstrumentationTest extends TestCase
         $event = $this->publishEventContexts()[0];
         $this->assertSame(0, $event['payload']['status']);
         $this->assertNull($event['payload']['waited_seconds']);
+
+        $this->assertProviderHttpPayloadIsWhitelisted([$event], 'cURL error 28');
     }
 
     /**

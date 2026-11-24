@@ -264,4 +264,85 @@ class PublishErrorContextTest extends TestCase
         $this->assertIsArray($publish);
         $this->assertSame(['workspace_id' => 3], $publish);
     }
+
+    /**
+     * OBS-04: PII stays off unless SENTRY_SEND_DEFAULT_PII is explicitly
+     * set, and tracing stays unsampled by default — regardless of whatever
+     * this machine's .env happens to contain.
+     */
+    public function test_sentry_pii_is_off_by_default_and_tracing_is_unsampled(): void
+    {
+        $names = ['SENTRY_SEND_DEFAULT_PII', 'SENTRY_TRACES_SAMPLE_RATE'];
+        $original = [];
+
+        foreach ($names as $name) {
+            $original[$name] = [$_ENV[$name] ?? null, $_SERVER[$name] ?? null, getenv($name)];
+        }
+
+        try {
+            foreach ($names as $name) {
+                unset($_ENV[$name], $_SERVER[$name]);
+                putenv($name);
+            }
+
+            $config = require base_path('config/sentry.php');
+
+            $this->assertSame(false, $config['send_default_pii']);
+            $this->assertSame(0.0, $config['traces_sample_rate']);
+
+            // Positive control: the env() seam really drives the entry, so
+            // the false above is a default and not a cached-config artifact.
+            $_ENV['SENTRY_SEND_DEFAULT_PII'] = 'true';
+            $_SERVER['SENTRY_SEND_DEFAULT_PII'] = 'true';
+            putenv('SENTRY_SEND_DEFAULT_PII=true');
+
+            $config = require base_path('config/sentry.php');
+            $this->assertSame(true, $config['send_default_pii']);
+        } finally {
+            foreach ($names as $name) {
+                [$originalEnv, $originalServer, $originalPutenv] = $original[$name];
+
+                if ($originalEnv === null) {
+                    unset($_ENV[$name]);
+                } else {
+                    $_ENV[$name] = $originalEnv;
+                }
+
+                if ($originalServer === null) {
+                    unset($_SERVER[$name]);
+                } else {
+                    $_SERVER[$name] = $originalServer;
+                }
+
+                if ($originalPutenv === false) {
+                    putenv($name);
+                } else {
+                    putenv($name.'='.$originalPutenv);
+                }
+            }
+        }
+    }
+
+    /**
+     * OBS-04: the SDK stays pinned to a stable 4.x release — no RC/beta/dev
+     * suffixes — and composer.json's constraint keeps it on the 4.x line.
+     */
+    public function test_the_sentry_sdk_is_pinned_to_a_stable_4_x_release(): void
+    {
+        $lock = json_decode((string) file_get_contents(base_path('composer.lock')), true);
+        $packages = [...$lock['packages'], ...$lock['packages-dev']];
+        $versions = array_values(array_filter(
+            $packages,
+            fn (array $package): bool => $package['name'] === 'sentry/sentry-laravel',
+        ));
+
+        $this->assertNotEmpty($versions);
+        $this->assertMatchesRegularExpression('/^4\.\d+\.\d+$/', $versions[0]['version']);
+
+        $json = json_decode((string) file_get_contents(base_path('composer.json')), true);
+        $this->assertStringStartsWith(
+            '^4.',
+            $json['require']['sentry/sentry-laravel'],
+        );
+    }
 }

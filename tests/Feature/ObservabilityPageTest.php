@@ -126,6 +126,50 @@ class ObservabilityPageTest extends TestCase
     }
 
     /**
+     * OBS-03 / T-01-09: a second, unrelated workspace's events never reach
+     * the page props — metrics and the outcomes list show exactly the
+     * acting owner's workspace numbers.
+     */
+    public function test_another_workspaces_events_never_reach_the_page_props(): void
+    {
+        [, $workspace] = $this->actingAsWorkspaceOwner();
+
+        $otherWorkspace = Workspace::factory()->create();
+        for ($i = 0; $i < 3; $i++) {
+            $otherPost = Post::factory()->for($otherWorkspace)->create(['title' => 'Other '.$i]);
+            $this->finalizeEvent($otherWorkspace, $otherPost, 'succeeded');
+        }
+
+        $succeededPost = Post::factory()->for($workspace)->create(['title' => 'Owner success']);
+        $failedPost = Post::factory()->for($workspace)->create(['title' => 'Owner failure']);
+        $this->finalizeEvent($workspace, $succeededPost, 'succeeded');
+        $this->finalizeEvent($workspace, $failedPost, 'failed');
+
+        $response = $this->get(route('dashboard.observability.index'));
+
+        $response->assertOk()->assertInertia(fn ($page) => $page
+            ->component('observability/index')
+            ->where('metrics.attempts', 2)
+            ->where('metrics.succeeded', 1)
+            ->where('metrics.failed', 1)
+            ->where('metrics.rate', 50)
+            ->has('metrics.recent_outcomes', 2)
+            ->where('metrics.recent_outcomes.0.human_id', $failedPost->human_id)
+            ->where('metrics.recent_outcomes.1.human_id', $succeededPost->human_id));
+
+        // None of the second workspace's content ids appear anywhere in the
+        // serialized page payload.
+        $otherIds = Post::query()
+            ->where('workspace_id', $otherWorkspace->id)
+            ->pluck('human_id')
+            ->all();
+        $serialized = (string) json_encode($response->inertiaPage()['props']['metrics'] ?? []);
+        foreach ($otherIds as $otherId) {
+            $this->assertStringNotContainsString((string) $otherId, $serialized);
+        }
+    }
+
+    /**
      * One finalize-stage event row. created_at is not fillable on the
      * append-only model, so the fixture forceFills it; workspace_id is
      * explicit because Workspace::current() is null in test context.
